@@ -19,11 +19,22 @@
 
 这是一个标准 DSH bundle 插件。安装到 `web` profile（GUI/TUI profile 会自动通过 cordis patch 层加载）：
 
+从 Git 源码安装（始终可用，无需发布）：
+
 ```bash
-# 从 npm 安装（发布后）
+dsh plugin --profile web add github:waknow/dsh-web-icon-indicator
+```
+
+从 npm 安装（发布后）：
+
+```bash
 dsh plugin --profile web add dsh-web-icon-indicator
-# 或从本地目录 / git 仓库 / tarball 安装
-dsh plugin --profile web add <路径或git地址或tarball>
+```
+
+或从本地目录 / tarball 安装：
+
+```bash
+dsh plugin --profile web add <路径或tarball>
 ```
 
 或将目录放进 `~/.dsh/profiles/web/node_modules/<name>/`，并附带与包内一致的 `cordis.patch.yml`。

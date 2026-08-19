@@ -6,6 +6,14 @@
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/waknow/dsh-web-icon-indicator.git"
+  },
+  "homepage": "https://github.com/waknow/dsh-web-icon-indicator",
+  "bugs": {
+    "url": "https://github.com/waknow/dsh-web-icon-indicator/issues"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
