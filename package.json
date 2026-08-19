@@ -1,0 +1,40 @@
+{
+  "name": "dsh-web-icon-indicator",
+  "description": "Browser tab favicon reflects the DSH session state: idle / running / asking / done, with state-driven SVG icons read from this plugin's `icons/` directory. · 浏览器标签页 favicon 实时反映 DSH 会话状态：待机 / 运行中 / 提问 / 完成，图标从本插件的 `icons/` 目录加载。",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json",
+    "./icons": "./icons/*.svg"
+  },
+  "files": [
+    "lib",
+    "icons",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "deepseek",
+    "harness",
+    "dsh",
+    "dsh-plugin",
+    "favicon",
+    "icon-indicator",
+    "browser-tab"
+  ]
+}

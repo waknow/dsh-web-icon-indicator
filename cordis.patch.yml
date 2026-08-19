@@ -1,0 +1,8 @@
+# dsh-web-icon-indicator bundle patch: inserts the host-only plugin row into a
+# profile's layer stack. The plugin reads its icon assets from `icons/`
+# beside this file (relative to the package directory).
+#
+# Install: `dsh plugin --profile web add <path-or-git-url>`
+- insert:
+    - id: dsh-web-icon-indicator
+      name: 'dsh-web-icon-indicator'
