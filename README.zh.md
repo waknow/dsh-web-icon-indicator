@@ -67,6 +67,7 @@ dsh plugin --profile web add <路径或tarball>
 - Host-only 插件：在现有 `webServer` 上注册三个路由（状态 JSON、`/dsh-web-icon-indicator/*.svg`，以及一个 `tapIndex` 向每个 `index.html` 注入小段浏览器脚本）。
 - 状态按 `agents.list()` 聚合，优先级 `asking > running > done > idle`。每次请求都会执行一次 `reconcile()` 检测 running → idle 的转换，因为 `agent/status` 的 idle 事件在回合结束时并不保证送达。
 - `ask_user_question` 工具调用（通过 `tools/pre-execute` / `tools/result`）把会话置为 `asking`，带可配置的最小保持时长，即使你立刻回答，图标也会保持可见。
+- 权限 / **沙箱拦截**等待同样会显示为 `asking`：当 agent 命中沙箱拒绝并请求提权（`sandbox_permissions` + `justification`），或其他工具需要征得同意时，审批服务会先写入一条 `approval/asked` 会话事件并阻塞 agent，直到你做出决定。插件监听 `session/event`（并以实时会话日志的权威折叠作为兜底）在整个等待期间将会话置为闪烁的 `asking` 状态，收到 `approval/decided` 后清除。
 - 浏览器脚本每秒轮询 `/dsh-web-icon-status.json`，把 `<link rel="icon">` 的 `href` 设为 `data:image/svg+xml,…` URI。浏览器不会播放 SVG favicon 的 CSS 动画，所以四个图标是静态 SVG，`asking` 的闪烁由脚本每 `askingBlinkMs` 交换黄红两帧实现。
 
 ## 已知限制
