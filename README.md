@@ -6,12 +6,12 @@ Browser tab favicon reflects the current DSH session state — `idle` / `running
 
 ## States
 
-| State | Visual · Icon | Animation |
-| --- | --- | --- |
-| `idle` | Original DeepSeek whale (default favicon) | — |
-| `running` | Yellow whale | Static |
-| `asking` | Yellow ⇄ red | 400 ms blink |
-| `done` | Green whale | Static for 5 s, then back to idle |
+| State | Preview | Visual · Icon | Animation |
+| --- | --- | --- | --- |
+| `idle` | ![idle](icons/idle.svg) | Original DeepSeek whale (default favicon) | — |
+| `running` | ![running](icons/running.svg) | Yellow whale | Static |
+| `asking` | ![asking](icons/asking.svg) | Yellow ⇄ red | 400 ms blink |
+| `done` | ![done](icons/done.svg) | Green whale | Static for 5 s, then back to idle |
 
 The four SVG icons live in [`icons/`](./icons/) beside the package. Edit them to match your brand; the plugin re-reads them on every request, so any change is live as soon as the browser tab polls again.
 

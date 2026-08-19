@@ -6,12 +6,12 @@
 
 ## 状态
 
-| 状态 | 图标 | 动画 |
-| --- | --- | --- |
-| `idle` 待机 | 原始 DeepSeek 鲸鱼（默认 favicon） | — |
-| `running` 运行中 | 黄色鲸鱼 | 静态 |
-| `asking` 提问 | 黄色 ⇄ 红色 | 400ms 闪烁 |
-| `done` 完成 | 绿色鲸鱼 | 保持 5 秒后回到待机 |
+| 状态 | 预览 | 图标 | 动画 |
+| --- | --- | --- | --- |
+| `idle` 待机 | ![idle](icons/idle.svg) | 原始 DeepSeek 鲸鱼（默认 favicon） | — |
+| `running` 运行中 | ![running](icons/running.svg) | 黄色鲸鱼 | 静态 |
+| `asking` 提问 | ![asking](icons/asking.svg) | 黄色 ⇄ 红色 | 400ms 闪烁 |
+| `done` 完成 | ![done](icons/done.svg) | 绿色鲸鱼 | 保持 5 秒后回到待机 |
 
 四个状态图标位于包内 `icons/` 目录。你可以随时替换它们——插件每次请求都会重新读取，浏览器下次轮询就生效。
 
