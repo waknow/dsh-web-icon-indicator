@@ -19,16 +19,16 @@
 
 这是一个标准 DSH bundle 插件。安装到 `web` profile（GUI/TUI profile 会自动通过 cordis patch 层加载）：
 
-从 Git 源码安装（始终可用，无需发布）：
-
-```bash
-dsh plugin --profile web add github:waknow/dsh-web-icon-indicator
-```
-
-从 npm 安装（发布后）：
+从 npm 安装（**推荐**——已发布为 `dsh-web-icon-indicator@0.1.0`）：
 
 ```bash
 dsh plugin --profile web add dsh-web-icon-indicator
+```
+
+从 Git 源码安装：
+
+```bash
+dsh plugin --profile web add github:waknow/dsh-web-icon-indicator
 ```
 
 或从本地目录 / tarball 安装：

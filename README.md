@@ -19,16 +19,16 @@ The four SVG icons live in [`icons/`](./icons/) beside the package. Edit them to
 
 This is a standard DSH bundle plugin. Install it into the `web` profile (the GUI/TUI profiles pick it up automatically through the cordis patch layer).
 
-From the Git source (always works, no publish needed):
-
-```bash
-dsh plugin --profile web add github:waknow/dsh-web-icon-indicator
-```
-
-From npm (once published):
+From npm (**recommended** — published as `dsh-web-icon-indicator@0.1.0`):
 
 ```bash
 dsh plugin --profile web add dsh-web-icon-indicator
+```
+
+From the Git source:
+
+```bash
+dsh plugin --profile web add github:waknow/dsh-web-icon-indicator
 ```
 
 Or from a local directory / tarball:
