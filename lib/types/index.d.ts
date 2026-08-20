@@ -16,6 +16,12 @@
 *       asking:  { effect: blink,  colors: ['#E5484D', '#FACC15'], speed: 400 }
 *       done:    { effect: heartbeat, colors: ['#22A06B'] }
 * ```
+*
+* The same surface is registered with the DSH settings service under the
+* `web-icon-indicator` namespace (schemastery schema in `lib/index.js`): it is
+* validated, persisted into the profile's `settings.yaml`, and editable from
+* 设置 → 插件 → 插件配置 through the browser half (`./client`). While no
+* settings service is composed, the plugin reads the composition entry only.
 */
 
 /** Per-state animation effect. */
@@ -73,5 +79,21 @@ export interface DshWebIconIndicatorAggregate {
   since: number;
 }
 
-export default function apply(ctx: unknown): void;
+/**
+ * Cordis plugin entry: `{ name, inject, config, apply, SETTINGS_NAMESPACE,
+ * CONFIG_SCHEMA }`. Mount once per profile through the bundle patch
+ * (`cordis.patch.yml`), never as a session-scoped agent preset.
+ */
+declare const plugin: {
+  name: "dsh-web-icon-indicator";
+  inject: readonly ["webServer", "timer", "agents", "fs", "sandboxPolicy"];
+  config: DshWebIconIndicatorConfig;
+  apply(ctx: unknown): void;
+  /** Settings namespace carrying the config (`web-icon-indicator`). */
+  SETTINGS_NAMESPACE: string;
+  /** Schemastery schema validating the config surface. */
+  CONFIG_SCHEMA: unknown;
+};
+
+export default plugin;
 export {};

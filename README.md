@@ -94,9 +94,33 @@ Entries are shallow-merged over the defaults, so you can override only a few sta
       done:    { effect: heartbeat, colors: ['#2ECC71'] }
 ```
 
+### Settings page & `settings.yaml` (DSH ≥ rc7)
+
+The plugin registers the whole config surface above with the DSH settings
+service under the `web-icon-indicator` namespace (a schemastery schema in
+`lib/index.js`):
+
+- **Web GUI:** open **设置 → 插件 → 插件配置** — a *Favicon indicator* card
+  edits the same keys (asking/done hold, and per-state effect / colors /
+  cycle), staged and saved through the settings transport.
+- **Persistence:** values land in the profile's `settings.yaml` (default
+  `~/.dsh/settings.yaml`) as a `web-icon-indicator:` section. The composition
+  entry stays the `base` layer; resolution order is schema defaults →
+  composition entry → settings document user layer.
+- **No server restart** for host-side timing changes (`askingHoldMs` /
+  `doneHoldMs` apply live). Visual changes need a tab reload — the injected
+  browser script bakes config at injection time, and the card re-injects it on
+  the next page load.
+- The browser half is a hand-written `lib/client.js` (ModuleLoader factory
+  format — no build step, no runtime deps beyond the shell's `react`). The DSH
+  client scanner picks a new `dsh.client` declaration up on the next profile
+  start.
+- Deployments without a settings service are unaffected: the plugin falls back
+  to reading the composition entry exactly as before.
+
 ## How it works
 
-- Host-only plugin: registers routes on the existing `webServer` — the status JSON endpoint, a static `/dsh-web-icon-indicator/base.svg` (the whale template), and one `tapIndex` that injects a small browser script into every served `index.html`.
+- Host plugin with a small browser half: registers routes on the existing `webServer` — the status JSON endpoint, a static `/dsh-web-icon-indicator/base.svg` (the whale template), and one `tapIndex` that injects a small browser script into every served `index.html`. The config surface is registered with the DSH settings service (`web-icon-indicator` namespace) for validation, persistence, and the settings-page card (see above).
 - Status is aggregated across live `agents.list()` with priority `asking > running > done > idle`. The aggregation runs a `reconcile()` step on every request to detect running → idle transitions, because `agent/status`'s idle delivery is not guaranteed at turn end.
 - `ask_user_question` tool calls (via `tools/pre-execute` / `tools/result`) flip the session into `asking` with a configurable minimum-hold so the icon stays visible even when the user answers immediately.
 - Permission / **sandbox-interception** waits are also surfaced as `asking`: when the agent hits a sandbox denial and escalates (`sandbox_permissions` + `justification`), or any other tool asks for approval, the approval service appends an `approval/asked` session event and blocks the agent until you decide. The plugin watches `session/event` (with an authoritative fold over the live session log as a fallback) and pins the session into the `asking` state for that whole wait, clearing it on `approval/decided`.

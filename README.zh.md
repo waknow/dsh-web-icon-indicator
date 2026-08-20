@@ -94,9 +94,28 @@ config:
       done:    { effect: heartbeat, colors: ['#2ECC71'] }
 ```
 
+### 设置页与 `settings.yaml`（DSH ≥ rc7）
+
+插件把上面整套配置注册进 DSH settings 服务，命名空间为 `web-icon-indicator`
+（schema 为 `lib/index.js` 中的 schemastery schema）：
+
+- **Web GUI：** 打开 **设置 → 插件 → 插件配置**，会出现 *标签页图标指示器*
+  卡片，可编辑同样的键（提问/完成驻留，以及每个状态的特效 / 颜色 / 周期），
+  通过 settings 传输层暂存并保存。
+- **持久化：** 值写入 profile 的 `settings.yaml`（默认 `~/.dsh/settings.yaml`）
+  的 `web-icon-indicator:` 段。合成条目仍是 `base` 层；解析顺序为 schema 默认值
+  → 合成条目 → 设置文档用户层。
+- **无需重启服务器**即可让主机侧计时（`askingHoldMs` / `doneHoldMs`）生效；
+  视觉变化需要重载标签页——注入的浏览器脚本在注入时烘焙配置，卡片会在下次
+  页面加载时重新注入。
+- 浏览器半区是手写的 `lib/client.js`（ModuleLoader factory 格式——无构建步骤、
+  无额外运行期依赖，仅用 shell 自带的 `react`）。DSH 客户端扫描器会在下次启动
+  profile 时识别新的 `dsh.client` 声明。
+- 未组合 settings 服务的部署不受影响：插件回退到直接读取合成条目，行为与之前完全一致。
+
 ## 实现原理
 
-- Host-only 插件：在现有 `webServer` 上注册路由——状态 JSON 端点、静态 `/dsh-web-icon-indicator/base.svg`（鲸鱼模板），以及一个 `tapIndex` 向每个 `index.html` 注入小段浏览器脚本。
+- Host 插件 + 一个小型浏览器半区：在现有 `webServer` 上注册路由——状态 JSON 端点、静态 `/dsh-web-icon-indicator/base.svg`（鲸鱼模板），以及一个 `tapIndex` 向每个 `index.html` 注入小段浏览器脚本。整套配置已注册进 DSH settings 服务（`web-icon-indicator` 命名空间）用于校验、持久化与设置页卡片（见上）。
 - 状态按 `agents.list()` 聚合，优先级 `asking > running > done > idle`。每次请求都会执行一次 `reconcile()` 检测 running → idle 的转换，因为 `agent/status` 的 idle 事件在回合结束时并不保证送达。
 - `ask_user_question` 工具调用（通过 `tools/pre-execute` / `tools/result`）把会话置为 `asking`，带可配置的最小保持时长，即使你立刻回答，图标也会保持可见。
 - 权限 / **沙箱拦截**等待同样会显示为 `asking`：当 agent 命中沙箱拒绝并请求提权（`sandbox_permissions` + `justification`），或其他工具需要征得同意时，审批服务会先写入一条 `approval/asked` 会话事件并阻塞 agent，直到你做出决定。插件监听 `session/event`（并以实时会话日志的权威折叠作为兜底）在整个等待期间将会话置为 `asking` 状态，收到 `approval/decided` 后清除。
