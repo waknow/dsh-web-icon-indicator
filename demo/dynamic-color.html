@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>dsh-web-icon-indicator — Dynamic SVG favicon effects demo</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1e222b;
+    --border: #2a2f3a;
+    --text: #e6e8ee;
+    --muted: #9aa1af;
+    --accent: #4da3ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: radial-gradient(1200px 600px at 50% -10%, #1a2230, var(--bg));
+    color: var(--text);
+    display: grid;
+    place-items: center;
+    padding: 32px 16px;
+  }
+  .wrap { width: min(940px, 100%); }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: .3px; }
+  .sub { color: var(--muted); margin: 0 0 24px; font-size: 14px; line-height: 1.55; }
+  .sub code { color: var(--accent); }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+  .card + .card { margin-top: 16px; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 14px; }
+
+  .fav-preview { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .fav-icon {
+    width: 56px; height: 56px; border-radius: 12px;
+    background: #fff; display: grid; place-items: center;
+    box-shadow: 0 4px 18px rgba(0,0,0,.45);
+  }
+  .fav-icon img { width: 38px; height: 38px; }
+  .fav-meta { font-size: 13px; color: var(--muted); line-height: 1.7; }
+  .fav-meta b { color: var(--text); }
+  .badge {
+    display: inline-block; padding: 2px 9px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; background: var(--panel-2);
+    border: 1px solid var(--border); color: var(--text);
+  }
+
+  .seg-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .seg-btn {
+    appearance: none; border: 1px solid var(--border); background: var(--panel-2);
+    color: var(--text); padding: 8px 14px; border-radius: 9px; cursor: pointer;
+    font-size: 13px; font-weight: 600; transition: .12s;
+  }
+  .seg-btn:hover { border-color: var(--accent); }
+  .seg-btn.active { border-color: var(--accent); background: rgba(77,163,255,.16); }
+  .seg-btn[data-effect] .fx-desc { display:none; }
+
+  .fx-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+  .fx-btn {
+    appearance: none; border: 1px solid var(--border); background: var(--panel-2);
+    color: var(--text); padding: 10px 8px; border-radius: 10px; cursor: pointer;
+    display: flex; flex-direction: column; gap: 4px; align-items: center; transition: .12s;
+  }
+  .fx-btn:hover { border-color: var(--accent); }
+  .fx-btn.active { border-color: var(--accent); background: rgba(77,163,255,.16); }
+  .fx-btn .fx-name { font-weight: 600; font-size: 13px; }
+  .fx-btn .fx-desc { font-size: 11px; color: var(--muted); line-height: 1.35; text-align: center; }
+
+  .colors { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .color-item { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+  .color-item label { font-size: 12px; font-weight: 600; text-transform: capitalize; display: block; margin-bottom: 8px; }
+  .color-item .row { display: flex; align-items: center; gap: 10px; }
+  .color-item input[type="color"] {
+    width: 42px; height: 42px; border: 1px solid var(--border); border-radius: 8px;
+    background: none; cursor: pointer; padding: 0;
+  }
+  .color-item input[type="text"] {
+    flex: 1; background: var(--panel); border: 1px solid var(--border); border-radius: 7px;
+    color: var(--text); padding: 8px 10px; font-size: 12px; font-family: ui-monospace, monospace;
+  }
+  .color-item input[type="text"]:focus { outline: none; border-color: var(--accent); }
+
+  .datauri {
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 14px; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #b7c3d4; word-break: break-all; line-height: 1.6; max-height: 150px; overflow: auto;
+  }
+  .tip { font-size: 12.5px; color: var(--muted); line-height: 1.7; margin: 14px 0 0; }
+  .tip code { color: var(--accent); background: rgba(77,163,255,.1); padding: 1px 5px; border-radius: 5px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>🎨 Dynamic SVG favicon — effects demo</h1>
+    <p class="sub">
+      One whale template, recolored and <b>animated in JavaScript</b> before encoding into a favicon
+      <code>data:image/svg+xml,…</code> URI. Favicons are rendered as plain images, so SVG CSS animations never run
+      inside the tab — <b>every effect below is produced by JS rebuilding the SVG string per frame</b> and swapping the
+      favicon <code>href</code>. Pick a state, then pick an effect.
+    </p>
+
+    <div class="card">
+      <h2>Favicon preview <span class="badge" id="stateBadge">idle</span></h2>
+      <div class="fav-preview">
+        <div class="fav-icon"><img id="favImg" alt="favicon preview" /></div>
+        <div class="fav-meta">
+          Live browser-tab favicon shows <b id="stateName">idle</b> · effect <b id="fxName">static</b>.
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>1 · State</h2>
+      <div class="seg-row" id="stateRow">
+        <button class="seg-btn active" data-state="idle">Idle</button>
+        <button class="seg-btn" data-state="running">Running</button>
+        <button class="seg-btn" data-state="asking">Asking</button>
+        <button class="seg-btn" data-state="done">Done</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>2 · Effect</h2>
+      <div class="fx-grid" id="fxRow"></div>
+    </div>
+
+    <div class="card">
+      <h2>3 · Colors (live — colors used by the effect update instantly)</h2>
+      <div class="colors" id="colors"></div>
+    </div>
+
+    <div class="card" style="display:none" id="srcCard">
+      <h2>Generated favicon source (data URI)</h2>
+      <div class="datauri" id="srcOut"></div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---- One whale path shared by every state (only the fill color varies) ----
+  var PATH = "M48.8354 10.0479C48.3232 9.79199 48.1025 10.2798 47.8032 10.5278C47.7007 10.6079 47.6143 10.7119 47.5273 10.8076C46.7793 11.624 45.9048 12.1597 44.7622 12.0957C43.0923 12 41.666 12.5356 40.4058 13.8398C40.1377 12.2319 39.2476 11.272 37.8926 10.6558C37.1836 10.3359 36.4668 10.0156 35.9702 9.31982C35.6235 8.82373 35.5293 8.27197 35.356 7.72754C35.2456 7.3999 35.1353 7.06396 34.7651 7.00781C34.3633 6.94385 34.2056 7.2876 34.0479 7.57568C33.418 8.75195 33.1733 10.0479 33.1973 11.3599C33.2524 14.312 34.4736 16.6641 36.8999 18.3359C37.1758 18.5278 37.2466 18.7197 37.1597 19C36.9946 19.5757 36.7974 20.1357 36.624 20.7119C36.5137 21.0801 36.3486 21.1597 35.9624 21C34.6309 20.4321 33.481 19.5918 32.4644 18.5757C30.7393 16.8721 29.1792 14.9917 27.2334 13.52C26.7764 13.1758 26.3193 12.856 25.8467 12.5518C23.8618 10.584 26.1069 8.96777 26.627 8.77588C27.1704 8.57568 26.8159 7.8877 25.0591 7.896C23.3022 7.90381 21.6953 8.50391 19.647 9.30371C19.3477 9.42383 19.0322 9.51172 18.7095 9.58398C16.8501 9.22363 14.9199 9.14355 12.9033 9.37598C9.10596 9.80762 6.07275 11.6396 3.84326 14.7681C1.16455 18.5278 0.53418 22.7998 1.30664 27.2559C2.11768 31.9521 4.46582 35.8398 8.07373 38.8799C11.8159 42.0322 16.1255 43.5762 21.041 43.2803C24.0269 43.104 27.3516 42.6963 31.1016 39.4561C32.0469 39.936 33.0396 40.1279 34.686 40.272C35.9546 40.3921 37.1758 40.208 38.1211 40.0078C39.6021 39.688 39.4995 38.2881 38.9639 38.0322C34.623 35.9678 35.5762 36.8081 34.71 36.1279C36.9155 33.4639 40.2402 30.6958 41.54 21.728C41.6426 21.0161 41.5557 20.5679 41.54 19.9917C41.5322 19.6396 41.6108 19.5039 42.0049 19.4639C43.0923 19.3359 44.1479 19.0317 45.1167 18.4878C47.9292 16.9199 49.064 14.3438 49.3315 11.2559C49.3711 10.7837 49.3237 10.2959 48.8354 10.0479ZM24.3262 37.8398C20.1196 34.4639 18.0791 33.3521 17.2358 33.3999C16.4482 33.4482 16.5898 34.3682 16.7632 34.9678C16.9443 35.5601 17.1812 35.9683 17.5117 36.4878C17.7402 36.832 17.8979 37.3442 17.2832 37.728C15.9282 38.584 13.5728 37.4399 13.4624 37.3838C10.7207 35.7358 8.42822 33.5601 6.81348 30.584C5.25342 27.7197 4.34766 24.6479 4.19775 21.3677C4.1582 20.5757 4.38672 20.2959 5.15869 20.1519C6.17529 19.96 7.22314 19.9199 8.23926 20.0718C12.5327 20.7119 16.1885 22.6719 19.2529 25.7759C21.002 27.5439 22.3252 29.6558 23.6885 31.7202C25.1377 33.9121 26.6978 36 28.6831 37.7119C29.3843 38.312 29.9434 38.7681 30.479 39.104C28.8643 39.2881 26.1699 39.3281 24.3262 37.8398ZM26.3433 24.6001C26.3433 24.248 26.6191 23.9678 26.9658 23.9678C27.0444 23.9678 27.1152 23.9839 27.1782 24.0078C27.2651 24.04 27.3438 24.0879 27.4067 24.1602C27.5171 24.272 27.5801 24.4321 27.5801 24.6001C27.5801 24.9521 27.3042 25.2319 26.9575 25.2319C26.6108 25.2319 26.3433 24.9521 26.3433 24.6001ZM32.6064 27.8799C32.2046 28.0479 31.8027 28.1919 31.4165 28.208C30.8179 28.2397 30.1641 27.9922 29.8096 27.688C29.2583 27.2158 28.8643 26.9521 28.6987 26.1279C28.6279 25.7759 28.6675 25.2319 28.7305 24.9199C28.8721 24.248 28.7144 23.8159 28.2495 23.4238C27.8716 23.104 27.3911 23.0161 26.8633 23.0161C26.666 23.0161 26.4849 22.9277 26.3511 22.856C26.1304 22.7441 25.9492 22.4639 26.1226 22.1201C26.1777 22.0078 26.4458 21.7358 26.5088 21.688C27.2256 21.272 28.0527 21.4077 28.8169 21.7197C29.5259 22.0161 30.0615 22.5601 30.834 23.3281C31.6216 24.2559 31.7632 24.5117 32.2124 25.208C32.5669 25.752 32.8901 26.312 33.1104 26.9521C33.2446 27.3521 33.0713 27.6802 32.6064 27.8799Z";
+  var CX = 27.889625; // whale bounding-box center (x): computed from the path
+  var CY = 24.952640; // whale bounding-box center (y)
+  var SPIN_SCALE = 0.68; // shrink so the rotated whale stays inside the 50x50 viewBox
+  var CENTER = 25; // viewBox center (50x50) — used to position the glow/ring circles
+
+  // ---- Default colors and effect definitions ----
+  var COLORS = { idle: "#ffffff", running: "#FACC15", asking: "#E5484D", done: "#22A06B" };
+  var EFFECTS = [
+    { id: "static",  name: "Static",      desc: "solid color, no animation" },
+    { id: "blink",   name: "Blink (2色)", desc: "frame-swap running ⇄ asking colors" },
+    { id: "fade",    name: "Breath fade", desc: "color pulses toward darker / lighter" },
+    { id: "rainbow", name: "Rainbow",     desc: "hue rotates around the wheel" },
+    { id: "spin",    name: "Spin",        desc: "whale rotates in place" },
+    { id: "heart",   name: "Heartbeat",   desc: "lub-dub scale pump" },
+    { id: "glow",    name: "Glow pulse",  desc: "soft halo ring expands behind it" },
+    { id: "ring",    name: "Ring count",  desc: "progress ring drains around it" },
+    { id: "bounce",  name: "Bounce",      desc: "whale hops up and down" }
+  ];
+
+  var state = "idle";
+  var effect = "static";
+  var raf = null;
+  var lastFrameTs = 0;
+
+  // ---- Color helpers --------------------------------------------------------
+  function hexToRgb(h) {
+    h = h.replace('#','');
+    if (h.length === 3) h = h.split('').map(c=>c+c).join('');
+    var n = parseInt(h, 16);
+    return [(n>>16)&255, (n>>8)&255, n&255];
+  }
+  function rgbToHex(r,g,b) {
+    return '#' + [r,g,b].map(function(v){ return ('0'+Math.round(v).toString(16)).slice(-2); }).join('');
+  }
+  function mix(a, b, t) {
+    var ca = hexToRgb(a), cb = hexToRgb(b);
+    return rgbToHex(ca[0]+(cb[0]-ca[0])*t, ca[1]+(cb[1]-ca[1])*t, ca[2]+(cb[2]-ca[2])*t);
+  }
+  function hslToHex(h, s, l) {
+    h = ((h % 360) + 360) % 360; s/=100; l/=100;
+    var c=(1-Math.abs(2*l-1))*s, x=c*(1-Math.abs((h/60)%2-1)), m=l-c/2, r=0,g=0,b=0;
+    if (h<60){r=c;g=x;} else if (h<120){r=x;g=c;} else if (h<180){g=c;b=x;}
+    else if (h<240){g=x;b=c;} else if (h<300){r=x;b=c;} else {r=c;b=x;}
+    return rgbToHex((r+m)*255,(g+m)*255,(b+m)*255);
+  }
+
+  // ---- SVG builder ----------------------------------------------------------
+  // extra: string of extra markup appended after the <path>; gattrs: transform
+  // attributes for a wrapping <g>. css: additional style rules.
+  function svg(fill, opts) {
+    opts = opts || {};
+    var css = "#p{fill:" + fill + ";}";
+    if (opts.css) css += opts.css;
+    var inner = '<path id="p" d="' + PATH + '"/>';
+    if (opts.extra) inner = inner + opts.extra;
+    if (opts.gattrs) inner = '<g ' + opts.gattrs + '>' + inner + '</g>';
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 50 50" fill="none">' +
+      '<style>' + css + '</style>' + inner + '</svg>';
+  }
+  // Rotation/scale wrapper around the whale's own bounding-box center so it
+  // spins in place rather than orbiting the (offset) viewBox center.
+  function tf(rotate, scale) {
+    var parts = [];
+    if (rotate || (scale && scale !== 1)) {
+      var transforms = [];
+      if (rotate) transforms.push('rotate(' + rotate + ' ' + CX + ' ' + CY + ')');
+      if (scale && scale !== 1) transforms.push('scale(' + scale + ')');
+      parts.push('translate(' + CX + ' ' + CY + ') ' + transforms.join(' ') + ' translate(' + (-CX) + ' ' + (-CY) + ')');
+    }
+    return parts.join(' ');
+  }
+
+  // ---- Apply one frame: set favicon + preview + source display --------------
+  function favLink() {
+    return document.querySelector("link[rel='icon']") || (function () {
+      var l = document.createElement("link");
+      l.rel = "icon";
+      document.head.appendChild(l);
+      return l;
+    })();
+  }
+  function toUri(svgText) { return "data:image/svg+xml," + encodeURIComponent(svgText); }
+  function setFrame(uri) {
+    var link = favLink();
+    link.setAttribute("href", uri);
+    document.getElementById("favImg").setAttribute("src", uri);
+    document.getElementById("srcOut").textContent = uri;
+  }
+
+  // ---- Effects --------------------------------------------------------------
+  // Each effect is renderFrame(t) -> URI, plus optional blink-style interval.
+  function frameRenderers() {
+    var color = COLORS[state];
+    var dark = mix(color, "#000000", 0.35); // darker variant for breath pulse
+    var time = function (t) { return t / 1000; }; // seconds
+
+    switch (effect) {
+      case "static": {
+        var uri = toUri(svg(color));
+        return function (t) { return uri; };
+      }
+      case "blink": {
+        var frames = [toUri(svg(COLORS.running)), toUri(svg(COLORS.asking))];
+        return function (t) {
+          var s = Math.floor(t / 400) % 2;
+          return frames[s];
+        };
+      }
+      case "fade": {
+        // sine pulse between base (lighter) and darker
+        return function (t) {
+          var k = 0.5 + 0.5 * Math.sin(time(t) * 2 * Math.PI * 1.2);
+          return toUri(svg(mix(dark, color, k)));
+        };
+      }
+      case "rainbow": {
+        // drive hue from state color, rotate continuously
+        var baseHue = hueOf(color);
+        return function (t) {
+          var h = (baseHue + t * 90 / 1000) % 360;
+          return toUri(svg(hslToHex(h, 70, 58)));
+        };
+      }
+      case "spin": {
+        return function (t) {
+          var deg = (t * 180 / 1000) % 360;
+          return toUri(svg(color, { gattrs: 'transform="' + tf(deg, SPIN_SCALE) + '"' }));
+        };
+      }
+      case "heart": {
+        // lub-dub: two beats per cycle, sharp scale pulse
+        return function (t) {
+          var tt = (t % 1000) / 1000;
+          var s = 1;
+          if (tt < 0.12) s = 1 + 0.16 * Math.sin(tt / 0.12 * Math.PI);
+          else if (tt < 0.25) s = 1 + 0.10 * Math.sin((tt - 0.12) / 0.13 * Math.PI);
+          return toUri(svg(color, { gattrs: 'transform="' + tf(0, s) + '"' }));
+        };
+      }
+      case "glow": {
+        // a soft halo ring behind the whale that expands & fades
+        return function (t) {
+          var k = (t % 1400) / 1400;
+          var r = 10 + k * 16;
+          var o = 0.5 * (1 - k);
+          var ring = '<circle cx="' + CENTER + '" cy="' + CENTER + '" r="' + r.toFixed(2) + '" ' +
+            'fill="none" stroke="' + color + '" stroke-opacity="' + o.toFixed(3) + '" stroke-width="3"/>';
+          return toUri(svg(color, { extra: ring }));
+        };
+      }
+      case "ring": {
+        // a countdown ring that drains; the whale stays painted
+        var R = 21, C = 2 * Math.PI * R;
+        return function (t) {
+          var k = ((t % 2000) / 2000); // drains over 2s
+          var ring = '<circle cx="' + CENTER + '" cy="' + CENTER + '" r="' + R + '" fill="none" ' +
+            'stroke="' + color + '" stroke-width="4" stroke-linecap="round" ' +
+            'stroke-dasharray="' + C.toFixed(2) + '" stroke-dashoffset="' + (C * k).toFixed(2) + '" ' +
+            'transform="rotate(-90 ' + CENTER + ' ' + CENTER + ')"/>';
+          return toUri(svg(color, { extra: ring }));
+        };
+      }
+      case "bounce": {
+        return function (t) {
+          var dy = -Math.abs(Math.sin(time(t) * 2 * Math.PI * 1.6)) * 6;
+          return toUri(svg(color, { gattrs: 'transform="translate(0 ' + dy.toFixed(2) + ')"' }));
+        };
+      }
+    }
+  }
+  function hueOf(hex) {
+    var c = hexToRgb(hex).map(function(v){ return v/255; });
+    var max = Math.max.apply(null, c), min = Math.min.apply(null, c), d = max - min, h = 0;
+    if (d) {
+      if (max === c[0]) h = ((c[1]-c[2])/d) % 6;
+      else if (max === c[1]) h = (c[2]-c[0])/d + 2;
+      else h = (c[0]-c[1])/d + 4;
+      h *= 60; if (h < 0) h += 360;
+    }
+    return h;
+  }
+
+  // ---- Run loop -------------------------------------------------------------
+  function stopLoop() { if (raf) { cancelAnimationFrame(raf); raf = null; } }
+  function rAF(step) {
+    raf = requestAnimationFrame(function (now) {
+      if (lastFrameTs === 0) lastFrameTs = now;
+      var uri = step(now - lastFrameTs);
+      if (uri) {
+        try { setFrame(uri); } catch (e) {}
+      }
+      rAF(step);
+    });
+  }
+  function apply() {
+    stopLoop();
+    lastFrameTs = 0;
+    var render = frameRenderers();
+    document.getElementById("stateBadge").textContent = state;
+    document.getElementById("stateName").textContent = state;
+    document.getElementById("fxName").textContent = effect;
+    // active state button
+    Array.prototype.forEach.call(document.getElementById("stateRow").children, function (b) {
+      b.classList.toggle("active", b.getAttribute("data-state") === state);
+    });
+    // active effect button
+    Array.prototype.forEach.call(document.getElementById("fxRow").children, function (b) {
+      b.classList.toggle("active", b.getAttribute("data-effect") === effect);
+    });
+    rAF(render);
+  }
+
+  // ---- Build UI -------------------------------------------------------------
+  // effects
+  var fxRow = document.getElementById("fxRow");
+  EFFECTS.forEach(function (fx) {
+    var b = document.createElement("button");
+    b.className = "fx-btn";
+    b.setAttribute("data-effect", fx.id);
+    b.innerHTML = '<span class="fx-name">' + fx.name + '</span><span class="fx-desc">' + fx.desc + '</span>';
+    b.addEventListener("click", function () { effect = fx.id; apply(); });
+    fxRow.appendChild(b);
+  });
+  // states
+  Array.prototype.forEach.call(document.getElementById("stateRow").children, function (btn) {
+    btn.addEventListener("click", function () { state = btn.getAttribute("data-state"); apply(); });
+  });
+  // colors
+  var colorsEl = document.getElementById("colors");
+  Object.keys(COLORS).forEach(function (name) {
+    var item = document.createElement("div");
+    item.className = "color-item";
+    var l = document.createElement("label"); l.textContent = name;
+    var row = document.createElement("div"); row.className = "row";
+    var picker = document.createElement("input"); picker.type = "color"; picker.value = COLORS[name];
+    var text = document.createElement("input"); text.type = "text"; text.value = COLORS[name];
+    function sync(src, dst) {
+      var v = normalize(src.value);
+      if (v) { dst.value = v; COLORS[name] = v; apply(); }
+    }
+    picker.addEventListener("input", function () { sync(picker, text); });
+    text.addEventListener("input", function () { sync(text, picker); });
+    row.appendChild(picker); row.appendChild(text);
+    item.appendChild(l); item.appendChild(row);
+    colorsEl.appendChild(item);
+  });
+  function normalize(v) {
+    v = v.trim();
+    return (/^#[0-9a-f]{3}$/i.test(v) || /^#[0-9a-f]{6}$/i.test(v)) ? v : null;
+  }
+
+  // cleanup on unload
+  window.addEventListener("beforeunload", stopLoop);
+
+  // go
+  apply();
+})();
+</script>
+</body>
+</html>

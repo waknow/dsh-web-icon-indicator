@@ -1,6 +1,6 @@
 {
   "name": "dsh-web-icon-indicator",
-  "description": "Browser tab favicon reflects the DSH session state: idle / running / asking / done, with state-driven SVG icons read from this plugin's `icons/` directory. · 浏览器标签页 favicon 实时反映 DSH 会话状态：待机 / 运行中 / 提问 / 完成，图标从本插件的 `icons/` 目录加载。",
+  "description": "Browser tab favicon reflects the DSH session state: idle / running / asking / done, recolored and animated from one base SVG in the browser (fully configurable colors + effects). · 浏览器标签页 favicon 实时反映 DSH 会话状态：待机 / 运行中 / 提问 / 完成，由单个 base.svg 在浏览器中动态上色与动画（颜色与特效完全可配置）。",
   "version": "0.1.0",
   "type": "module",
   "main": "lib/index.js",

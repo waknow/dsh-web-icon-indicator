@@ -10,25 +10,56 @@
 *   config:
 *     askingBlinkMs: 320
 *     doneHoldMs: 4000
-*     iconsDir: /opt/dsh/icon-indicator-icons
+*     effectSpeedMs: 900
+*     colors:
+*       idle: '#1a1a1a'
+*       running: '#FACC15'
+*       asking: '#E5484D'
+*       done: '#22A06B'
+*     effects:
+*       idle: static
+*       running: static
+*       asking: blink
+*       done: static
+*     blinkColor: '#FACC15'
 * ```
 */
+
+/** Per-state animation effect. `blink` swaps between the state color and
+ * `blinkColor` each `askingBlinkMs`; the continuous effects (`breath`,
+ * `rainbow`, `heartbeat`, `bounce`) cycle once per `effectSpeedMs`. */
+export type DshWebIconEffect =
+  | "static"
+  | "blink"
+  | "breath"
+  | "rainbow"
+  | "heartbeat"
+  | "bounce";
+
 export interface DshWebIconIndicatorConfig {
   /**
-   * Absolute path to the directory holding `idle.svg`, `running.svg`,
-   * `asking.svg`, and `done.svg`. Defaults to `<package>/icons/`.
+   * Absolute path to the directory holding the single `base.svg` template.
+   * Defaults to `<package>/icons/`.
    */
   iconsDir?: string;
   /** Status JSON endpoint the browser polls. Default `/dsh-web-icon-status.json`. */
   statusPath?: string;
-  /** URL prefix where the four SVGs are served. Default `/dsh-web-icon-indicator`. */
+  /** URL prefix where `base.svg` is served. Default `/dsh-web-icon-indicator`. */
   iconPathPrefix?: string;
-  /** Minimum visibility of the asking icon in milliseconds. Default 3500. */
+  /** Minimum visibility of the asking state in milliseconds. Default 3500. */
   askingHoldMs?: number;
-  /** Yellow/red switch interval for the asking blink in milliseconds. Default 400. */
+  /** Frame interval for the `blink` effect in milliseconds. Default 400. */
   askingBlinkMs?: number;
-  /** Time the done icon stays before falling back to idle, in milliseconds. Default 5000. */
+  /** Time the done state stays before falling back to idle, in milliseconds. Default 5000. */
   doneHoldMs?: number;
+  /** Cycle length for the continuous effects (breath/rainbow/heartbeat/bounce), ms. Default 1200. */
+  effectSpeedMs?: number;
+  /** Per-state fill color (hex). Partial maps merge over the defaults. */
+  colors?: Partial<Record<"idle" | "running" | "asking" | "done", string>>;
+  /** Per-state animation effect. Partial maps merge over the defaults. */
+  effects?: Partial<Record<"idle" | "running" | "asking" | "done", DshWebIconEffect>>;
+  /** Second color of a `blink` effect (hex). Default the `running` color. */
+  blinkColor?: string;
 }
 
 export interface DshWebIconIndicatorAggregate {

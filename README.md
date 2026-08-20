@@ -6,14 +6,29 @@ Browser tab favicon reflects the current DSH session state — `idle` / `running
 
 ## States
 
-| State | Preview | Visual · Icon | Animation |
-| --- | --- | --- | --- |
-| `idle` | ![idle](icons/idle.svg) | Original DeepSeek whale (default favicon) | — |
-| `running` | ![running](icons/running.svg) | Yellow whale | Static |
-| `asking` | ![asking](icons/asking.svg) | Yellow ⇄ red | 400 ms blink |
-| `done` | ![done](icons/done.svg) | Green whale | Static for 5 s, then back to idle |
+| State | Color (default) | Effect (default) |
+| --- | --- | --- |
+| `idle` | `#1a1a1a` (deep whale) | `static` |
+| `running` | `#FACC15` (yellow) | `static` |
+| `asking` | `#E5484D` + `#FACC15` | `blink` (400 ms) |
+| `done` | `#22A06B` (green) | `static` for `doneHoldMs`, then `idle` |
 
-The four SVG icons live in [`icons/`](./icons/) beside the package. Edit them to match your brand; the plugin re-reads them on every request, so any change is live as soon as the browser tab polls again.
+The plugin ships **one** base whale SVG ([`icons/base.svg`](./icons/base.svg)) and recolors / animates it in the browser — there are no per-color icon files anymore. Color and effect are fully configurable per state (see [Configure](#configure)).
+
+### Dynamic color & animation
+
+All states share the same whale path; only the fill color (and optionally an animation) differ. Because a favicon is a plain image, SVG CSS animations never run inside the tab — the injected browser script builds each frame as a `data:image/svg+xml,…` URI, replacing the `__COLOR__` placeholder with the configured color and, for animated effects, injecting a `<g transform>` for scale/translate on every `requestAnimationFrame` tick. The available effects are:
+
+| Effect | Behavior |
+| --- | --- |
+| `static` | A single colored frame, no motion |
+| `blink` | Swaps between the state color and `blinkColor` every `askingBlinkMs` |
+| `breath` | Color pulses smoothly toward a darker variant over `effectSpeedMs` |
+| `rainbow` | Hue cycles through the wheel over `effectSpeedMs` |
+| `heartbeat` | Scale pulses with a sharp lub-dub beat over `effectSpeedMs` |
+| `bounce` | The whale hops up and down over `effectSpeedMs` |
+
+A self-contained demo (no build, no deps) with these effects lives in [`demo/dynamic-color.html`](./demo/dynamic-color.html) — pick a state + effect and edit colors live, watching the browser-tab favicon update in real time.
 
 ## Install
 
@@ -45,34 +60,46 @@ All keys are optional; defaults shown.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `iconsDir` | `<package>/icons/` | Directory of the four `*.svg` files |
+| `iconsDir` | `<package>/icons/` | Directory holding the single `base.svg` |
 | `statusPath` | `/dsh-web-icon-status.json` | JSON status endpoint |
-| `iconPathPrefix` | `/dsh-web-icon-indicator` | URL prefix the four SVGs are served under |
-| `askingHoldMs` | `3500` | Minimum visibility of the asking icon |
-| `askingBlinkMs` | `400` | Yellow/red blink interval |
-| `doneHoldMs` | `5000` | Time the done icon stays |
+| `iconPathPrefix` | `/dsh-web-icon-indicator` | URL prefix `base.svg` is served under |
+| `askingHoldMs` | `3500` | Minimum visibility of the asking state |
+| `askingBlinkMs` | `400` | Frame interval of the `blink` effect |
+| `doneHoldMs` | `5000` | Time the done state stays |
+| `effectSpeedMs` | `1200` | Cycle length of breath/rainbow/heartbeat/bounce |
+| `colors` | `{ idle:#1a1a1a, running:#FACC15, asking:#E5484D, done:#22A06B }` | Per-state fill color |
+| `effects` | `{ idle:static, running:static, asking:blink, done:static }` | Per-state animation |
+| `blinkColor` | `#FACC15` | Second color of a `blink` effect |
 
-Override from your composition row:
+`colors` and `effects` are shallow-merged over the defaults, so you can override only a few states. Override from your composition row:
 
 ```yaml
 - id: dsh-web-icon-indicator
   name: 'dsh-web-icon-indicator'
   config:
-    askingBlinkMs: 320
-    doneHoldMs: 4000
+    effectSpeedMs: 900
+    colors:
+      running: '#FF9900'
+      done: '#2ECC71'
+    effects:
+      running: breath     # breathe instead of static
+      done: heartbeat      # heartbeat on completion
+      asking: rainbow      # asking cycles hues
+    blinkColor: '#FF9900'
 ```
 
 ## How it works
 
-- Host-only plugin: registers three routes on the existing `webServer` (status JSON, `/dsh-web-icon-indicator/*.svg`, and one `tapIndex` to inject a small browser script into every served `index.html`).
+- Host-only plugin: registers routes on the existing `webServer` — the status JSON endpoint, a static `/dsh-web-icon-indicator/base.svg` (the whale template), and one `tapIndex` that injects a small browser script into every served `index.html`.
 - Status is aggregated across live `agents.list()` with priority `asking > running > done > idle`. The aggregation runs a `reconcile()` step on every request to detect running → idle transitions, because `agent/status`'s idle delivery is not guaranteed at turn end.
 - `ask_user_question` tool calls (via `tools/pre-execute` / `tools/result`) flip the session into `asking` with a configurable minimum-hold so the icon stays visible even when the user answers immediately.
-- Permission / **sandbox-interception** waits are also surfaced as `asking`: when the agent hits a sandbox denial and escalates (`sandbox_permissions` + `justification`), or any other tool asks for approval, the approval service appends an `approval/asked` session event and blocks the agent until you decide. The plugin watches `session/event` (with an authoritative fold over the live session log as a fallback) and pins the session into the blinking `asking` state for that whole wait, clearing it on `approval/decided`.
-- The browser script polls `/dsh-web-icon-status.json` once a second and sets `<link rel="icon">`'s `href` to a `data:image/svg+xml,…` URI. Browsers don't play SVG favicon CSS animations, so the four icons are static SVGs and the `asking` blink is driven by the script swapping between yellow and red frames every `askingBlinkMs`.
+- Permission / **sandbox-interception** waits are also surfaced as `asking`: when the agent hits a sandbox denial and escalates (`sandbox_permissions` + `justification`), or any other tool asks for approval, the approval service appends an `approval/asked` session event and blocks the agent until you decide. The plugin watches `session/event` (with an authoritative fold over the live session log as a fallback) and pins the session into the `asking` state for that whole wait, clearing it on `approval/decided`.
+- The browser script polls `/dsh-web-icon-status.json` once a second, fetches `base.svg` once, and then on every `requestAnimationFrame` tick rebuilds the favicon as a `data:image/svg+xml,…` URI — replacing the `__COLOR__` placeholder with the state's configured color and applying the state's configured effect. Browsers don't play favicon SVG CSS animations, so all motion is JS-driven.
 
 ## Caveats
 
-- Favicon SVG CSS animations do not run inside the browser's tab UI — the four shipped icons are static for that reason. Open the SVG files directly in a viewer to see the full design.
+- Favicon SVG CSS animations do not run inside the browser's tab UI — all effects are produced in JavaScript by rebuilding the data-URI each frame. This is a deliberate, zero-dependency design.
+- The base template must keep its `__COLOR__` placeholder in the `#p { fill: … }` rule; the browser replaces that token to color each frame.
 - The plugin runs in the **host** plane; it must be mounted into a profile's composition, not a session-scoped agent preset.
 - File reads go through the `fs` service with the configured `iconsDir` as `cwd`. Make sure that path is readable under your deployment's sandbox policy.
 
