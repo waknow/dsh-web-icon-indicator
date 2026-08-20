@@ -12,6 +12,10 @@ dsh plugin --profile web add <this-repo-path>            # install into web prof
 curl http://localhost:3080/dsh-web-icon-status.json      # aggregated state JSON: {"state","since"}
 ```
 
+## Upstream DSH source
+
+The DSH platform this plugin runs on lives at **https://github.com/deepseek-ai/deepseek-harness** — consult it when the *installed* packages lack context: what ships in `node_modules` is built/minified (browser bundles, compiled `.js`), while the repo carries the readable `src/*` TypeScript sources (e.g. `packages/client/…`, `packages/settings/…`). Note the installed `@deepseek-ai/*` versions may lag or lead the repo's `main`; when behavior differs, match the installed version tag first.
+
 ## Project structure
 
 | Path | Role | Notes |
@@ -32,7 +36,8 @@ curl http://localhost:3080/dsh-web-icon-status.json      # aggregated state JSON
 - All session state lives in module-scope Maps/Sets keyed by agent id: `states`, `asking`, `askDone`, `askTimers`, `lastSeen` (see `lib/index.js`).
 - The browser script is the `INJECTED_SCRIPT` template string, injected via `webServer.tapIndex`; config flows in through placeholder tokens (`__STATUS_PATH__`, `__BASE_PATH__`, `__CFG__`), each paired with a `.replace()` call in `apply()` (rebuilt by the settings `onChange` hook — the injected script is a `let`, so the next page load picks up settings edits). `__CFG__` carries the `{ states }` object as JSON, where each state is `{ effect, colors[], speed? }`.
 - The config surface is registered with the DSH settings service (`web-icon-indicator` namespace). `CONFIG_SCHEMA` defaults must mirror `DEFAULTS`; `installSettingsSection` in `apply()` wires the composition entry as `base` and `source()` as the live config (falls back to the entry when no settings service is composed).
-- `lib/client.js` is a hand-written ModuleLoader factory bundle (no bundler): it only `require("react")` and exposes `{ apply, inject }` with `inject = ["slots", "settingsScope", "locale"]`. Keep it that way — never add imports that aren't guaranteed registered factories.
+- `lib/client.js` is a hand-written ModuleLoader factory bundle (no bundler): it `require("react")` and `require("@deepseek-ai/dsh-client-ui-primitives")` (both shell-provided statics, so they always resolve) and exposes `{ apply, inject }` with `inject = ["slots", "settingsScope", "locale"]`. Keep it that way — never add imports that aren't guaranteed registered factories or seed words.
+- UI display parts in `lib/client.js` should prefer components from `@deepseek-ai/dsh-client-ui-primitives` (Button, Input, Icon* icons, …) over hand-rolled equivalents — that is the official standard (the shell's own plugin cards use them). Hand-roll only where primitives has no counterpart: a passive status badge (`Pill` is an interactive chip), a `<select>` (no primitives Select), or layout wrappers. Inline styles may use the shell's `--dsw-alias-*` design tokens.
 - Keep changes small and localized to `lib/index.js` / `lib/client.js`; prefer editing over restructuring.
 - Commit style: `init:` / `feat:` / `fix:` / `docs:` (see git log).
 
@@ -46,7 +51,7 @@ curl http://localhost:3080/dsh-web-icon-status.json      # aggregated state JSON
 ### Change the settings card (fields, labels, save/reset)
 1. Edit `lib/client.js`: the `IconConfigCard` component + the `en`/`zh` dictionaries. The card reads the scope snapshot (`status/writable/value/base/user`) and writes via `scope.set(field, value)` / `scope.unset(field)`.
 2. No build step: the file is served as-is at `/plugins/dsh-web-icon-indicator/client.js`. A NEW `dsh.client` declaration (or a first-time `lib/client.js`) is only scanned at profile start; content changes to an existing bundle are re-hashed by HMR.
-3. Verify with the SSR smoke test pattern (mock `window.__ModuleLoader__`, run the factory with a stubbed `require("react")`, render the card via `react-dom/server`).
+3. Verify with the SSR smoke test pattern (mock `window.__ModuleLoader__`, run the factory with stubbed `require("react")` and `require("@deepseek-ai/dsh-client-ui-primitives")`, render the card via `react-dom/server`).
 
 ### Add a new state (e.g. `error`)
 1. Add a `states.<newstate>` default (`effect` / `colors[]` / `speed`) in `DEFAULTS` in `lib/index.js`. No new SVG is needed — every state renders from `base.svg`.
