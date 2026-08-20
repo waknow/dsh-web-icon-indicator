@@ -21,12 +21,12 @@ All states share the same whale path; only the fill color (and optionally an ani
 
 | Effect | Behavior |
 | --- | --- |
-| `static` | A single colored frame, no motion |
-| `blink` | Swaps between the state color and `blinkColor` every `askingBlinkMs` |
-| `breath` | Color pulses smoothly toward a darker variant over `effectSpeedMs` |
-| `rainbow` | Hue cycles through the wheel over `effectSpeedMs` |
-| `heartbeat` | Scale pulses with a sharp lub-dub beat over `effectSpeedMs` |
-| `bounce` | The whale hops up and down over `effectSpeedMs` |
+| `static` | A single colored frame, no motion — uses `colors[0]` |
+| `blink` | Toggles `colors[0]` ⇄ `colors[1]` (a darker second color is derived if missing) over `speed` |
+| `breath` | Pulsates between `colors[0]` and `colors[1]` (derived if missing) over `speed` |
+| `rainbow` | Uses `colors[0]` as the starting hue, then cycles the wheel over `speed` |
+| `heartbeat` | Scale pulses with a sharp lub-dub beat over `speed` — color is `colors[0]` |
+| `bounce` | The whale hops up and down over `speed` — color is `colors[0]` |
 
 A self-contained demo (no build, no deps) with these effects lives in [`demo/dynamic-color.html`](./demo/dynamic-color.html) — pick a state + effect and edit colors live, watching the browser-tab favicon update in real time.
 
@@ -64,28 +64,34 @@ All keys are optional; defaults shown.
 | `statusPath` | `/dsh-web-icon-status.json` | JSON status endpoint |
 | `iconPathPrefix` | `/dsh-web-icon-indicator` | URL prefix `base.svg` is served under |
 | `askingHoldMs` | `3500` | Minimum visibility of the asking state |
-| `askingBlinkMs` | `400` | Frame interval of the `blink` effect |
-| `doneHoldMs` | `5000` | Time the done state stays |
-| `effectSpeedMs` | `1200` | Cycle length of breath/rainbow/heartbeat/bounce |
-| `colors` | `{ idle:#1a1a1a, running:#FACC15, asking:#E5484D, done:#22A06B }` | Per-state fill color |
-| `effects` | `{ idle:static, running:static, asking:blink, done:static }` | Per-state animation |
-| `blinkColor` | `#FACC15` | Second color of a `blink` effect |
+| `doneHoldMs` | `5000` | Time the done state stays before falling back to idle |
+| `states` | see below | Per-state visual config |
 
-`colors` and `effects` are shallow-merged over the defaults, so you can override only a few states. Override from your composition row:
+Each entry in `states` is one object per state: `{ effect, colors[], speed? }`:
+
+```yaml
+config:
+  states:
+    idle:    { effect: static,    colors: ['#1a1a1a'] }
+    running: { effect: static,    colors: ['#FACC15'] }
+    asking:  { effect: blink,     colors: ['#E5484D', '#FACC15'], speed: 400 }
+    done:    { effect: static,    colors: ['#22A06B'] }
+```
+
+- **`effect`** — one of `static | blink | breath | rainbow | heartbeat | bounce`.
+- **`colors`** — an **array** of hex colors. `colors[0]` is the primary. Multi-color effects read more entries: `blink` uses `colors[0]`⇄`colors[1]`, `breath` breathes `colors[0]`⇄`colors[1]` (each derives a darker second color if omitted), `rainbow` uses only `colors[0]` as the starting hue.
+- **`speed`** — optional per-state cycle length in ms (also the `blink` toggle interval). Default `1200`.
+
+Entries are shallow-merged over the defaults, so you can override only a few states. Example:
 
 ```yaml
 - id: dsh-web-icon-indicator
   name: 'dsh-web-icon-indicator'
   config:
-    effectSpeedMs: 900
-    colors:
-      running: '#FF9900'
-      done: '#2ECC71'
-    effects:
-      running: breath     # breathe instead of static
-      done: heartbeat      # heartbeat on completion
-      asking: rainbow      # asking cycles hues
-    blinkColor: '#FF9900'
+    states:
+      running: { effect: breath,    colors: ['#FF9900', '#FFD9A0'], speed: 900 }
+      asking:  { effect: rainbow,   colors: ['#FF0000'] }
+      done:    { effect: heartbeat, colors: ['#2ECC71'] }
 ```
 
 ## How it works

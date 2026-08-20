@@ -8,26 +8,17 @@
 * - id: dsh-web-icon-indicator
 *   name: 'dsh-web-icon-indicator'
 *   config:
-*     askingBlinkMs: 320
-*     doneHoldMs: 4000
-*     effectSpeedMs: 900
-*     colors:
-*       idle: '#1a1a1a'
-*       running: '#FACC15'
-*       asking: '#E5484D'
-*       done: '#22A06B'
-*     effects:
-*       idle: static
-*       running: static
-*       asking: blink
-*       done: static
-*     blinkColor: '#FACC15'
+*     askingHoldMs: 3500
+*     doneHoldMs: 5000
+*     states:
+*       idle:    { effect: static, colors: ['#1a1a1a'] }
+*       running: { effect: static, colors: ['#FACC15'] }
+*       asking:  { effect: blink,  colors: ['#E5484D', '#FACC15'], speed: 400 }
+*       done:    { effect: heartbeat, colors: ['#22A06B'] }
 * ```
 */
 
-/** Per-state animation effect. `blink` swaps between the state color and
- * `blinkColor` each `askingBlinkMs`; the continuous effects (`breath`,
- * `rainbow`, `heartbeat`, `bounce`) cycle once per `effectSpeedMs`. */
+/** Per-state animation effect. */
 export type DshWebIconEffect =
   | "static"
   | "blink"
@@ -35,6 +26,27 @@ export type DshWebIconEffect =
   | "rainbow"
   | "heartbeat"
   | "bounce";
+
+/** Visual config for a single state. */
+export interface DshWebIconStateConfig {
+  /** Animation effect for this state. */
+  effect?: DshWebIconEffect;
+  /**
+   * Fill colors for this state, as an ARRAY (so multi-color effects like
+   * `blink` / `breath` / `rainbow` can use more than one color):
+   * - `colors[0]` is the primary color (used by every effect).
+   * - `blink` toggles `colors[0]` ⇄ `colors[1]` (a darker second color is
+   *   derived when `colors[1]` is omitted).
+   * - `breath` breathes between `colors[0]` and `colors[1]` (derived if absent).
+   * - `rainbow` uses only `colors[0]` as the starting hue, then cycles the wheel.
+   * - `static` / `heartbeat` / `bounce` use `colors[0]`.
+   */
+  colors?: string[];
+  /** Per-state cycle length in ms (also the `blink` toggle interval). Default 1200. */
+  speed?: number;
+}
+
+export type DshWebIconStateName = "idle" | "running" | "asking" | "done";
 
 export interface DshWebIconIndicatorConfig {
   /**
@@ -48,23 +60,15 @@ export interface DshWebIconIndicatorConfig {
   iconPathPrefix?: string;
   /** Minimum visibility of the asking state in milliseconds. Default 3500. */
   askingHoldMs?: number;
-  /** Frame interval for the `blink` effect in milliseconds. Default 400. */
-  askingBlinkMs?: number;
   /** Time the done state stays before falling back to idle, in milliseconds. Default 5000. */
   doneHoldMs?: number;
-  /** Cycle length for the continuous effects (breath/rainbow/heartbeat/bounce), ms. Default 1200. */
-  effectSpeedMs?: number;
-  /** Per-state fill color (hex). Partial maps merge over the defaults. */
-  colors?: Partial<Record<"idle" | "running" | "asking" | "done", string>>;
-  /** Per-state animation effect. Partial maps merge over the defaults. */
-  effects?: Partial<Record<"idle" | "running" | "asking" | "done", DshWebIconEffect>>;
-  /** Second color of a `blink` effect (hex). Default the `running` color. */
-  blinkColor?: string;
+  /** Per-state visual config. Each entry is shallow-merged over its default. */
+  states?: Partial<Record<DshWebIconStateName, DshWebIconStateConfig>>;
 }
 
 export interface DshWebIconIndicatorAggregate {
   /** Highest-priority state across all live sessions. */
-  state: "idle" | "running" | "asking" | "done";
+  state: DshWebIconStateName;
   /** Epoch millis when that aggregate state was first entered. */
   since: number;
 }

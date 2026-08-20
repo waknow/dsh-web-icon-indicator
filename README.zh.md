@@ -21,12 +21,12 @@
 
 | 特效 | 效果 |
 | --- | --- |
-| `static` | 纯色单帧，无动画 |
-| `blink` | 在状态色与 `blinkColor` 之间按 `askingBlinkMs` 切换 |
-| `breath` | 颜色在 `effectSpeedMs` 内向更深的变体平滑呼吸过渡 |
-| `rainbow` | 色相在 `effectSpeedMs` 内绕色轮循环 |
-| `heartbeat` | 在 `effectSpeedMs` 内做「lub-dub」式的尖锐缩放脉冲 |
-| `bounce` | 鲸鱼在 `effectSpeedMs` 内上下跳动 |
+| `static` | 纯色单帧，无动画——使用 `colors[0]` |
+| `blink` | 在 `colors[0]` ⇄ `colors[1]` 之间按 `speed` 切换（缺省时自动推导更深的第二色） |
+| `breath` | 在 `colors[0]` 与 `colors[1]` 之间平滑呼吸过渡（缺省时推导） |
+| `rainbow` | 以 `colors[0]` 为起始色相，在 `speed` 内绕色轮循环 |
+| `heartbeat` | 在 `speed` 内做「lub-dub」式的尖锐缩放脉冲——颜色为 `colors[0]` |
+| `bounce` | 鲸鱼在 `speed` 内上下跳动——颜色为 `colors[0]` |
 
 完整自包含 demo（无构建、无依赖）在 [`demo/dynamic-color.html`](./demo/dynamic-color.html)：选择状态 + 特效并实时改色，即可看到标签页 favicon 即时变化。
 
@@ -64,28 +64,34 @@ dsh plugin --profile web add <路径或tarball>
 | `statusPath` | `/dsh-web-icon-status.json` | JSON 状态端点 |
 | `iconPathPrefix` | `/dsh-web-icon-indicator` | `base.svg` 的 URL 前缀 |
 | `askingHoldMs` | `3500` | 提问状态的最小保持时长 |
-| `askingBlinkMs` | `400` | `blink` 特效的帧间隔 |
-| `doneHoldMs` | `5000` | 完成状态保持时长 |
-| `effectSpeedMs` | `1200` | 连续型特效（breath/rainbow/heartbeat/bounce）的周期 |
-| `colors` | `{ idle:#1a1a1a, running:#FACC15, asking:#E5484D, done:#22A06B }` | 每个状态的填充色 |
-| `effects` | `{ idle:static, running:static, asking:blink, done:static }` | 每个状态的动画特效 |
-| `blinkColor` | `#FACC15` | `blink` 特效的第二个颜色 |
+| `doneHoldMs` | `5000` | 完成状态保持时长，随后回到 idle |
+| `states` | 见下 | 每个状态的视觉配置 |
 
-`colors` 与 `effects` 会在默认值之上做浅合并，因此只需覆盖少量状态即可。在组合行中覆盖：
+`states` 中每个状态是一个对象：`{ effect, colors[], speed? }`：
+
+```yaml
+config:
+  states:
+    idle:    { effect: static,    colors: ['#1a1a1a'] }
+    running: { effect: static,    colors: ['#FACC15'] }
+    asking:  { effect: blink,     colors: ['#E5484D', '#FACC15'], speed: 400 }
+    done:    { effect: static,    colors: ['#22A06B'] }
+```
+
+- **`effect`** — 取 `static | blink | breath | rainbow | heartbeat | bounce` 之一。
+- **`colors`** — **数组**，多个 hex 颜色。`colors[0]` 为主色。多色特效读取更多项：`blink` 用 `colors[0]`⇄`colors[1]`，`breath` 在 `colors[0]`⇄`colors[1]` 间过渡（缺省时自动推导更深的第二色），`rainbow` 仅用 `colors[0]` 作起始色相。
+- **`speed`** — 可选，该状态的周期（ms），也是 `blink` 的切换间隔。默认 `1200`。
+
+每个状态条目会在默认值之上做浅合并，因此只需覆盖少量状态。示例：
 
 ```yaml
 - id: dsh-web-icon-indicator
   name: 'dsh-web-icon-indicator'
   config:
-    effectSpeedMs: 900
-    colors:
-      running: '#FF9900'
-      done: '#2ECC71'
-    effects:
-      running: breath     # 改为呼吸渐变而非静态
-      done: heartbeat      # 完成时心跳
-      asking: rainbow      # 提问时色相循环
-    blinkColor: '#FF9900'
+    states:
+      running: { effect: breath,    colors: ['#FF9900', '#FFD9A0'], speed: 900 }
+      asking:  { effect: rainbow,   colors: ['#FF0000'] }
+      done:    { effect: heartbeat, colors: ['#2ECC71'] }
 ```
 
 ## 实现原理
