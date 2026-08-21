@@ -77,6 +77,12 @@ export interface DshWebIconIndicatorAggregate {
   state: DshWebIconStateName;
   /** Epoch millis when that aggregate state was first entered. */
   since: number;
+  /**
+   * Current per-state visual config, echoed by the status endpoint so the
+   * injected browser script can apply a settings save within ~1 s (no tab
+   * reload). Added in 0.2.x; older browser bundles ignore it.
+   */
+  states: Partial<Record<DshWebIconStateName, DshWebIconStateConfig>>;
 }
 
 /**
