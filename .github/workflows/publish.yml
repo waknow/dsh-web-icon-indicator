@@ -1,54 +1,37 @@
-# Publish to npm on version tags (vX.Y.Z). The package is zero-build, so
-# "publishing" is just verifying the pack list and running `npm publish`.
-#
-# Required repo setup (one-time, manual):
-#   - an npm automation token (https://www.npmjs.com/settings/<user>/tokens)
-#     stored as the `NPM_TOKEN` secret in Settings → Secrets and variables
-#   - for the tag version to be published, package.json `version` must equal
-#     the tag (checked below); bump first, then `git tag v<version>` + push
-#
-# Optional hardening: add `--provenance` to the publish step and
-# `id-token: write` under `permissions` to attach sigstore attestations
-# (requires a public repo and npmjs 2FA).
-
-name: Publish to npm
+name: Publish npm package
 
 on:
   push:
     tags:
-      - 'v*'
-  workflow_dispatch: # manual re-run from the Actions tab
+      - "v*"
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v6
         with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
 
-      - name: Verify tag matches package.json version
-        run: |
-          TAG="${GITHUB_REF#refs/tags/v}"
-          PKG="$(node -p "require('./package.json').version")"
-          if [ "$TAG" != "$PKG" ]; then
-            echo "::error::tag v$TAG does not match package.json version $PKG"
-            exit 1
-          fi
-
-      - name: Install dependencies
+      - name: Install
         run: npm ci
 
-      - name: Sanity-check the publish contents
-        run: npm pack --dry-run
+      - name: Test
+        run: npm test --if-present
 
-      - name: Publish to npm
+      - name: Build
+        run: npm run build --if-present
+
+      - name: Publish
         run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
