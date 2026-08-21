@@ -9,8 +9,20 @@ Browser tab favicon reflects the current DSH session state — `idle` / `running
 - **Live session state on the tab favicon** — the browser-tab icon mirrors `idle` / `running` / `asking` / `done` (aggregate priority: `asking` > `running` > `done` > `idle`), so background tabs tell you at a glance what your agents are doing — including `ask_user_question` prompts and approval / sandbox-escalation waits, which pin the icon to `asking`.
 - **One SVG, recolored & animated in the browser** — ships a single whale template ([`icons/base.svg`](./icons/base.svg)); every state, color and frame is rendered client-side as a `data:image/svg+xml` URI. No per-color icon files.
 - **Six built-in effects** — `static`, `blink`, `breath`, `rainbow`, `heartbeat`, `bounce` — all driven by JavaScript, since favicons don't play SVG CSS animations.
-- **Fully configurable, applied live** — per-state color, effect and cycle speed are editable from the DSH settings page (`web-icon-indicator` namespace); changes reach the running tab within ~1 s — no reload, no restart.
+- **Fully configurable, applied live** — every state's color, effect and cycle speed, plus the asking/done hold timings, apply to the running tab within ~1 s — no reload, no restart.
+- **Built-in settings UI, zero YAML** — a *Favicon indicator* card in the DSH settings page edits the whole config with live color-swatch previews and persists it to `settings.yaml` for you (path below).
 - **Background-tab & restart-proof** — animated states keep a wall-clock fallback while `requestAnimationFrame` is paused in hidden tabs, and the status poll self-heals across host restarts.
+
+### 🛠 Configuration UI — how to get there
+
+| # | Step |
+| --- | --- |
+| 1 | Open the DSH Web GUI and go to **Settings / 设置**. |
+| 2 | In the **Plugins / 插件** tab, open **Plugin config / 插件配置**. |
+| 3 | Find the **Favicon indicator / 标签页图标指示器** card. |
+| 4 | Expand a state row (`idle` / `running` / `asking` / `done`) to edit **Effect / 特效**, **Colors / 颜色** and **Cycle (ms) / 周期（毫秒）**; use **Asking hold / 提问驻留** and **Done hold / 完成驻留** for the two timings. |
+
+Changes are saved through the settings transport into the profile's `settings.yaml` and applied to the running tab within ~1 s — no reload, no restart. See [Configure](#configure) for the full key reference.
 
 ## 🎬 Default configuration, visualized
 
