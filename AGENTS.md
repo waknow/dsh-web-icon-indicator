@@ -27,7 +27,8 @@ The DSH platform this plugin runs on lives at **https://github.com/deepseek-ai/d
 | `icons/base.svg` | The single whale template with a `__COLOR__` placeholder; recolored/animated in the browser | The filename is locked by a route regex — treat as immutable |
 | `cordis.patch.yml` | Install patch that inserts the plugin row into the profile composition | Referenced by `package.json` → `dsh.bundle.patch` |
 | `README.md` / `README.zh.md` | User docs (EN / zh) | Update both on any behavior/config/icon change |
-| `package.json` | Metadata, `exports` (incl. `./client`), `dsh.client` declaration, `dependencies` (`@deepseek-ai/schemastery`, `@deepseek-ai/dsh-settings`), `files` allowlist | No `scripts` field; publishing is manual `npm publish` |
+| `package.json` | Metadata, `exports` (incl. `./client`), `dsh.client` declaration, `dependencies` (`@deepseek-ai/schemastery`, `@deepseek-ai/dsh-settings`), `files` allowlist | No `scripts` field |
+| `.github/workflows/publish.yml` | CI: publishes to npm on `v*` tags (no build/test steps; requires the `NPM_TOKEN` secret) | Keeps the release flow hands-off — see *Release* |
 
 ## Code style & conventions
 
@@ -96,7 +97,13 @@ The rules below pin its requirements to this repo; follow them on any settings-c
 
 ### Release
 1. Bump `version` in `package.json`.
-2. `npm publish` (manual, no CI). Confirm new assets are listed in `files`.
+2. `npm install` — syncs the tracked `package-lock.json` root version.
+3. Commit, tag `v<version>`, and `git push --tags`.
+4. GitHub Actions (`.github/workflows/publish.yml`) publishes to npm on the `v*`
+   tag: it verifies the tag matches `package.json`, runs `npm ci` + a
+   `npm pack --dry-run` sanity check, then `npm publish` with the `NPM_TOKEN`
+   secret. One-time repo setup: add an npm automation token as the `NPM_TOKEN`
+   secret in Settings → Secrets and variables.
 
 ## Testing
 
