@@ -34,7 +34,7 @@ A self-contained demo (no build, no deps) with these effects lives in [`demo/dyn
 
 This is a standard DSH bundle plugin. Install it into the `web` profile (the GUI/TUI profiles pick it up automatically through the cordis patch layer).
 
-From npm (**recommended** — published as `dsh-web-icon-indicator@0.1.0`):
+From npm (**recommended** — published as `dsh-web-icon-indicator@0.2.1`):
 
 ```bash
 dsh plugin --profile web add dsh-web-icon-indicator
