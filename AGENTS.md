@@ -107,8 +107,8 @@ The rules below pin its requirements to this repo; follow them on any settings-c
    repo**. One-time npmjs-side setup: link this GitHub repo as a trusted
    publisher on the npm account owning the package (see
    <https://docs.npmjs.com/trusted-publishers>; requires 2FA and a public
-   package). The workflow has no tag↔`package.json` version check — bump first,
-   then tag.
+   package). The workflow verifies the tag matches `package.json` and fails
+   fast otherwise.
 
 ## Testing
 
