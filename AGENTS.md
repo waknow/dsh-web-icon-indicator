@@ -28,7 +28,7 @@ The DSH platform this plugin runs on lives at **https://github.com/deepseek-ai/d
 | `cordis.patch.yml` | Install patch that inserts the plugin row into the profile composition | Referenced by `package.json` → `dsh.bundle.patch` |
 | `README.md` / `README.zh.md` | User docs (EN / zh) | Update both on any behavior/config/icon change |
 | `package.json` | Metadata, `exports` (incl. `./client`), `dsh.client` declaration, `dependencies` (`@deepseek-ai/schemastery`, `@deepseek-ai/dsh-settings`), `files` allowlist | No `scripts` field |
-| `.github/workflows/publish.yml` | CI: publishes to npm on `v*` tags (no build/test steps; requires the `NPM_TOKEN` secret) | Keeps the release flow hands-off — see *Release* |
+| `.github/workflows/publish.yml` | CI: publishes to npm on `v*` tags via **OIDC trusted publishing** (no token secret; `npm ci` + optional test/build, then `npm publish`) | Keeps the release flow hands-off — see *Release* |
 
 ## Code style & conventions
 
@@ -100,10 +100,15 @@ The rules below pin its requirements to this repo; follow them on any settings-c
 2. `npm install` — syncs the tracked `package-lock.json` root version.
 3. Commit, tag `v<version>`, and `git push --tags`.
 4. GitHub Actions (`.github/workflows/publish.yml`) publishes to npm on the `v*`
-   tag: it verifies the tag matches `package.json`, runs `npm ci` + a
-   `npm pack --dry-run` sanity check, then `npm publish` with the `NPM_TOKEN`
-   secret. One-time repo setup: add an npm automation token as the `NPM_TOKEN`
-   secret in Settings → Secrets and variables.
+   tag (Node 24: `npm ci`, `npm test` / `npm run build` if present, then
+   `npm publish`). Auth is **npm trusted publishing via OIDC**: the workflow's
+   `id-token: write` lets npm exchange the GitHub Actions OIDC token for a
+   short-lived publish credential, so **no `NPM_TOKEN` secret exists in this
+   repo**. One-time npmjs-side setup: link this GitHub repo as a trusted
+   publisher on the npm account owning the package (see
+   <https://docs.npmjs.com/trusted-publishers>; requires 2FA and a public
+   package). The workflow has no tag↔`package.json` version check — bump first,
+   then tag.
 
 ## Testing
 
