@@ -58,10 +58,10 @@
 
 这是一个标准 DSH bundle 插件。安装到 `web` profile（GUI/TUI profile 会自动通过 cordis patch 层加载）：
 
-从 npm 安装（**推荐**——已发布为 `dsh-web-icon-indicator@0.2.1`）：
+从 npm 安装（**推荐**）：
 
 ```bash
-dsh plugin --profile web add dsh-web-icon-indicator
+dsh plugin --profile web add dsh-web-icon-indicator@latest
 ```
 
 从 Git 源码安装：

@@ -58,10 +58,10 @@ Want to tweak colors and watch the tab favicon change live? Open the self-contai
 
 This is a standard DSH bundle plugin. Install it into the `web` profile (the GUI/TUI profiles pick it up automatically through the cordis patch layer).
 
-From npm (**recommended** — published as `dsh-web-icon-indicator@0.2.1`):
+From npm (**recommended**):
 
 ```bash
-dsh plugin --profile web add dsh-web-icon-indicator
+dsh plugin --profile web add dsh-web-icon-indicator@latest
 ```
 
 From the Git source:
