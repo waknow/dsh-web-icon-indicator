@@ -2,33 +2,45 @@
 
 > 📖 [English](README.md) · [中文文档](README.zh.md)
 
-浏览器标签页 favicon 实时反映 DSH 会话状态——待机 / 运行中 / 提问 / 完成——让你在标签页置于后台时也能一眼看出是否有会话需要处理。
+浏览器标签页 favicon 实时反映 DSH 会话状态——`待机` / `运行中` / `提问` / `完成`——让你在标签页置于后台时也能一眼看出是否有会话需要处理。
 
-## 状态
+## ✨ 功能特性
+
+- **标签页 favicon 实时反映会话状态** —— 浏览器标签页图标同步 `idle` / `running` / `asking` / `done`（聚合优先级：`asking` > `running` > `done` > `idle`），后台标签页也能一眼看清 agent 们在做什么——包括 `ask_user_question` 提问，以及审批 / 沙箱提权等待（这两种情况会把图标钉在 `asking` 态）。
+- **单个 SVG，浏览器内上色与动画** —— 只内置一个鲸鱼模板（[`icons/base.svg`](./icons/base.svg)）；每个状态、颜色、每一帧都在客户端渲染为 `data:image/svg+xml` URI，不再有按颜色拆分的图标文件。
+- **六种内置特效** —— `static`（静止）、`blink`（闪烁）、`breath`（呼吸）、`rainbow`（彩虹）、`heartbeat`（心跳）、`bounce`（跳动），全部由 JavaScript 驱动（favicon 不会播放 SVG CSS 动画）。
+- **完全可配置、即时生效** —— 每个状态的颜色、特效、周期都可在 DSH 设置页编辑（`web-icon-indicator` 命名空间）；改动约 1 秒内同步到已打开的标签页——无需刷新、无需重启。
+- **后台标签页与重启抗性** —— 隐藏标签页中 `requestAnimationFrame` 被暂停时，动画态会按墙钟时间补帧；状态轮询还能扛住 host 重启，图标自动恢复。
+
+## 🎬 默认配置，可视化
+
+四个默认状态在浏览器标签页中的实际效果（`asking` 那条鲸鱼真的在闪烁）：
+
+<p align="center">
+  <img src="assets/states-default.svg" width="420" alt="默认状态：idle 深色鲸鱼、running 黄色、asking 红/黄闪烁、done 绿色">
+</p>
 
 | 状态 | 颜色（默认） | 特效（默认） |
 | --- | --- | --- |
-| `idle` 待机 | `#1a1a1a`（深色鲸鱼） | `static` |
-| `running` 运行中 | `#FACC15`（黄色） | `static` |
-| `asking` 提问 | `#E5484D` + `#FACC15` | `blink`（400ms） |
-| `done` 完成 | `#22A06B`（绿色） | `doneHoldMs` 内 `static`，随后回到 `idle` |
+| `idle` 待机 | `#1a1a1a`——深色鲸鱼 | `static` |
+| `running` 运行中 | `#FACC15`——黄色 | `static` |
+| `asking` 提问 | `#E5484D` ⇄ `#FACC15`——红/黄 | `blink`（400ms） |
+| `done` 完成 | `#22A06B`——绿色 | `static`，保持 `doneHoldMs` 后回到 `idle` |
 
-插件只内置**一个**基础鲸鱼 SVG（[`icons/base.svg`](./icons/base.svg)），在浏览器中动态上色/加动画——不再有按颜色拆分的图标文件。每个状态的颜色和特效都可通过 [配置](#配置) 自由设置。
+## ✨ 全部特效，动画演示
 
-### 动态颜色与动画
+下面每个预览都是真实的鲸鱼路径，按插件实际渲染方式做动画（预览是自包含的动画 SVG，在浏览器里直接播放）：
 
-所有状态共用同一条鲸鱼路径，只有填充色（以及可选的动画）不同。由于 favicon 是普通图片，SVG 内部的 CSS 动画不会在标签页执行——注入的浏览器脚本把每一帧构建成 `data:image/svg+xml,…` URI：在每个 `requestAnimationFrame` 周期替换 `__COLOR__` 占位符为配置颜色，动画类特效则在 `<g transform>` 中注入缩放/位移。可选特效：
+| 特效 | 效果 | 预览 |
+| --- | --- | --- |
+| `static` | 纯色单帧，无动画——使用 `colors[0]` | <img src="assets/effects/static.svg" width="56" alt="static 特效预览"> |
+| `blink` | 在 `colors[0]` ⇄ `colors[1]` 之间按 `speed` 切换（缺省时自动推导更深的第二色） | <img src="assets/effects/blink.svg" width="56" alt="blink 特效预览"> |
+| `breath` | 在 `colors[0]` 与 `colors[1]` 之间平滑呼吸过渡（缺省时推导） | <img src="assets/effects/breath.svg" width="56" alt="breath 特效预览"> |
+| `rainbow` | 以 `colors[0]` 为起始色相，在 `speed` 内绕色轮循环 | <img src="assets/effects/rainbow.svg" width="56" alt="rainbow 特效预览"> |
+| `heartbeat` | 在 `speed` 内做「lub-dub」式的尖锐缩放脉冲——颜色为 `colors[0]` | <img src="assets/effects/heartbeat.svg" width="56" alt="heartbeat 特效预览"> |
+| `bounce` | 鲸鱼在 `speed` 内上下跳动——颜色为 `colors[0]` | <img src="assets/effects/bounce.svg" width="56" alt="bounce 特效预览"> |
 
-| 特效 | 效果 |
-| --- | --- |
-| `static` | 纯色单帧，无动画——使用 `colors[0]` |
-| `blink` | 在 `colors[0]` ⇄ `colors[1]` 之间按 `speed` 切换（缺省时自动推导更深的第二色） |
-| `breath` | 在 `colors[0]` 与 `colors[1]` 之间平滑呼吸过渡（缺省时推导） |
-| `rainbow` | 以 `colors[0]` 为起始色相，在 `speed` 内绕色轮循环 |
-| `heartbeat` | 在 `speed` 内做「lub-dub」式的尖锐缩放脉冲——颜色为 `colors[0]` |
-| `bounce` | 鲸鱼在 `speed` 内上下跳动——颜色为 `colors[0]` |
-
-完整自包含 demo（无构建、无依赖）在 [`demo/dynamic-color.html`](./demo/dynamic-color.html)：选择状态 + 特效并实时改色，即可看到标签页 favicon 即时变化。
+想改颜色并实时观察标签页 favicon 变化？打开自包含 demo（[`demo/dynamic-color.html`](./demo/dynamic-color.html)）——选择状态 + 特效并实时改色，favicon 即时更新（无构建、无依赖）。
 
 ## 安装
 
@@ -126,7 +138,7 @@ config:
 
 ## 已知限制
 
-- favicon 的 SVG CSS 动画在浏览器标签页 UI 中不会运行——所有特效都由 JavaScript 每帧重建 data-URI 实现，这是零依赖设计的刻意取舍。
+- favicon 的 SVG CSS 动画在浏览器标签页 UI 中不会运行——所有特效都由 JavaScript 每帧重建 data-URI 实现，这是零依赖设计的刻意取舍。（本文档中的动画预览只是演示素材——真实 favicon 的动画始终由 JS 驱动。）
 - `base.svg` 模板必须保留 `#p { fill: … }` 规则中的 `__COLOR__` 占位符；浏览器会替换该标记为每帧上色。
 - 插件运行在 **host** 平面，必须挂载进 profile 的组合配置，不能作为会话级 agent preset。
 - 文件读取走 `fs` 服务，以配置的 `iconsDir` 为 `cwd`。请确保该路径在部署环境的沙箱策略下可读。

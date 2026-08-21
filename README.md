@@ -4,31 +4,43 @@
 
 Browser tab favicon reflects the current DSH session state — `idle` / `running` / `asking` / `done` — so you can see at a glance whether a session needs your attention, even when the tab is in the background.
 
-## States
+## ✨ What it does
 
-| State | Color (default) | Effect (default) |
+- **Live session state on the tab favicon** — the browser-tab icon mirrors `idle` / `running` / `asking` / `done` (aggregate priority: `asking` > `running` > `done` > `idle`), so background tabs tell you at a glance what your agents are doing — including `ask_user_question` prompts and approval / sandbox-escalation waits, which pin the icon to `asking`.
+- **One SVG, recolored & animated in the browser** — ships a single whale template ([`icons/base.svg`](./icons/base.svg)); every state, color and frame is rendered client-side as a `data:image/svg+xml` URI. No per-color icon files.
+- **Six built-in effects** — `static`, `blink`, `breath`, `rainbow`, `heartbeat`, `bounce` — all driven by JavaScript, since favicons don't play SVG CSS animations.
+- **Fully configurable, applied live** — per-state color, effect and cycle speed are editable from the DSH settings page (`web-icon-indicator` namespace); changes reach the running tab within ~1 s — no reload, no restart.
+- **Background-tab & restart-proof** — animated states keep a wall-clock fallback while `requestAnimationFrame` is paused in hidden tabs, and the status poll self-heals across host restarts.
+
+## 🎬 Default configuration, visualized
+
+The four default states, exactly as they appear in the browser tab (the `asking` whale really blinks):
+
+<p align="center">
+  <img src="assets/states-default.svg" width="420" alt="Default states: idle dark whale, running yellow, asking red/yellow blinking, done green">
+</p>
+
+| State | Default color | Default effect |
 | --- | --- | --- |
-| `idle` | `#1a1a1a` (deep whale) | `static` |
-| `running` | `#FACC15` (yellow) | `static` |
-| `asking` | `#E5484D` + `#FACC15` | `blink` (400 ms) |
-| `done` | `#22A06B` (green) | `static` for `doneHoldMs`, then `idle` |
+| `idle` | `#1a1a1a` — deep whale | `static` |
+| `running` | `#FACC15` — yellow | `static` |
+| `asking` | `#E5484D` ⇄ `#FACC15` — red/yellow | `blink` (400 ms) |
+| `done` | `#22A06B` — green | `static`, stays `doneHoldMs`, then back to `idle` |
 
-The plugin ships **one** base whale SVG ([`icons/base.svg`](./icons/base.svg)) and recolors / animates it in the browser — there are no per-color icon files anymore. Color and effect are fully configurable per state (see [Configure](#configure)).
+## ✨ All effects, animated
 
-### Dynamic color & animation
+Every preview below is the real whale path, animated the same way the plugin renders it (the previews are self-contained animated SVGs — they play right in your browser):
 
-All states share the same whale path; only the fill color (and optionally an animation) differ. Because a favicon is a plain image, SVG CSS animations never run inside the tab — the injected browser script builds each frame as a `data:image/svg+xml,…` URI, replacing the `__COLOR__` placeholder with the configured color and, for animated effects, injecting a `<g transform>` for scale/translate on every `requestAnimationFrame` tick. The available effects are:
+| Effect | What it does | Preview |
+| --- | --- | --- |
+| `static` | A single colored frame, no motion — uses `colors[0]` | <img src="assets/effects/static.svg" width="56" alt="static effect preview"> |
+| `blink` | Toggles `colors[0]` ⇄ `colors[1]` (a darker second color is derived if missing) over `speed` | <img src="assets/effects/blink.svg" width="56" alt="blink effect preview"> |
+| `breath` | Pulsates smoothly between `colors[0]` and `colors[1]` (derived if missing) over `speed` | <img src="assets/effects/breath.svg" width="56" alt="breath effect preview"> |
+| `rainbow` | Uses `colors[0]` as the starting hue, then cycles the color wheel over `speed` | <img src="assets/effects/rainbow.svg" width="56" alt="rainbow effect preview"> |
+| `heartbeat` | Scale pulses with a sharp lub-dub beat over `speed` — color is `colors[0]` | <img src="assets/effects/heartbeat.svg" width="56" alt="heartbeat effect preview"> |
+| `bounce` | The whale hops up and down over `speed` — color is `colors[0]` | <img src="assets/effects/bounce.svg" width="56" alt="bounce effect preview"> |
 
-| Effect | Behavior |
-| --- | --- |
-| `static` | A single colored frame, no motion — uses `colors[0]` |
-| `blink` | Toggles `colors[0]` ⇄ `colors[1]` (a darker second color is derived if missing) over `speed` |
-| `breath` | Pulsates between `colors[0]` and `colors[1]` (derived if missing) over `speed` |
-| `rainbow` | Uses `colors[0]` as the starting hue, then cycles the wheel over `speed` |
-| `heartbeat` | Scale pulses with a sharp lub-dub beat over `speed` — color is `colors[0]` |
-| `bounce` | The whale hops up and down over `speed` — color is `colors[0]` |
-
-A self-contained demo (no build, no deps) with these effects lives in [`demo/dynamic-color.html`](./demo/dynamic-color.html) — pick a state + effect and edit colors live, watching the browser-tab favicon update in real time.
+Want to tweak colors and watch the tab favicon change live? Open the self-contained demo ([`demo/dynamic-color.html`](./demo/dynamic-color.html)) — pick a state + effect, edit colors, and the favicon updates in real time (no build, no dependencies).
 
 ## Install
 
@@ -132,7 +144,7 @@ service under the `web-icon-indicator` namespace (a schemastery schema in
 
 ## Caveats
 
-- Favicon SVG CSS animations do not run inside the browser's tab UI — all effects are produced in JavaScript by rebuilding the data-URI each frame. This is a deliberate, zero-dependency design.
+- Favicon SVG CSS animations do not run inside the browser's tab UI — all effects are produced in JavaScript by rebuilding the data-URI each frame. This is a deliberate, zero-dependency design. (The animated previews in this README are demo assets for illustration only — the favicon itself is JS-animated.)
 - The base template must keep its `__COLOR__` placeholder in the `#p { fill: … }` rule; the browser replaces that token to color each frame.
 - The plugin runs in the **host** plane; it must be mounted into a profile's composition, not a session-scoped agent preset.
 - File reads go through the `fs` service with the configured `iconsDir` as `cwd`. Make sure that path is readable under your deployment's sandbox policy.

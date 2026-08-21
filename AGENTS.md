@@ -27,12 +27,12 @@ The DSH platform this plugin runs on lives at **https://github.com/deepseek-ai/d
 | `icons/base.svg` | The single whale template with a `__COLOR__` placeholder; recolored/animated in the browser | The filename is locked by a route regex — treat as immutable |
 | `cordis.patch.yml` | Install patch that inserts the plugin row into the profile composition | Referenced by `package.json` → `dsh.bundle.patch` |
 | `README.md` / `README.zh.md` | User docs (EN / zh) | Update both on any behavior/config/icon change |
-| `package.json` | Metadata, `exports` (incl. `./client`), `dsh.client` declaration, `dependencies` (`@deepseek-ai/schemastery`, `@deepseek-ai/dsh-settings`), `files` allowlist | No `scripts` field |
+| `package.json` | Metadata, `exports` (incl. `./client`), `dsh.client` declaration, `peerDependencies` (`@deepseek-ai/schemastery`, `@deepseek-ai/dsh-settings`), `files` allowlist | No `scripts` field |
 | `.github/workflows/publish.yml` | CI: publishes to npm on `v*` tags via **OIDC trusted publishing** (no token secret; `npm ci` + optional test/build, then `npm publish`) | Keeps the release flow hands-off — see *Release* |
 
 ## Code style & conventions
 
-- ESM only (`"type": "module"`); the only runtime dependencies are `@deepseek-ai/schemastery` and `@deepseek-ai/dsh-settings` (settings registration) — keep it that way.
+- ESM only (`"type": "module"`); the only runtime dependencies are `@deepseek-ai/schemastery` and `@deepseek-ai/dsh-settings` (settings registration), declared as `peerDependencies` per the awesome-dsh-plugin contributing guide — keep it that way.
 - Plugin contract: default export `{ name, inject, config, apply(ctx), SETTINGS_NAMESPACE, CONFIG_SCHEMA }`; `inject` = `webServer, timer, agents, fs, sandboxPolicy`.
 - All session state lives in module-scope Maps/Sets keyed by agent id: `states`, `asking`, `askDone`, `askTimers`, `lastSeen` (see `lib/index.js`).
 - The browser script is the `INJECTED_SCRIPT` template string, injected via `webServer.tapIndex`; config flows in through placeholder tokens (`__STATUS_PATH__`, `__BASE_PATH__`, `__CFG__`), each paired with a `.replace()` call in `apply()` (rebuilt by the settings `onChange` hook — the injected script is a `let`, so the next page load picks up settings edits). `__CFG__` carries the `{ states }` object as JSON, where each state is `{ effect, colors[], speed? }`.
@@ -134,7 +134,7 @@ No automated tests. Verify manually:
 
 ## Do NOT
 
-- Add a build system, test framework, linter, or NEW dependencies without an explicit request. This repo is deliberately zero-build, zero-test; the only runtime deps are `@deepseek-ai/schemastery` + `@deepseek-ai/dsh-settings` (settings registration, added on request).
+- Add a build system, test framework, linter, or NEW dependencies without an explicit request. This repo is deliberately zero-build, zero-test; the only runtime deps are `@deepseek-ai/schemastery` + `@deepseek-ai/dsh-settings` (settings registration, added on request), declared as `peerDependencies` (the host harness provides them).
 - Rename `base.svg` or change the icon route regex `^base\.svg$` without updating the state machine, browser script, types, and both READMEs together.
 - Break the plugin contract `{ name, inject, config, apply(ctx) }` (+ `SETTINGS_NAMESPACE` / `CONFIG_SCHEMA`) or the `dsh.bundle.patch` → `cordis.patch.yml` wiring.
 - Let `agent/turn-stopping` override the `asking` pin while it is active.
