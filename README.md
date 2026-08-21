@@ -20,7 +20,7 @@ Browser tab favicon reflects the current DSH session state — `idle` / `running
 | 1 | Open the DSH Web GUI and go to **Settings / 设置**. |
 | 2 | In the **Plugins / 插件** tab, open **Plugin config / 插件配置**. |
 | 3 | Find the **Favicon indicator / 标签页图标指示器** card. |
-| 4 | Expand a state row (`idle` / `running` / `asking` / `done`) to edit **Effect / 特效**, **Colors / 颜色** and **Cycle (ms) / 周期（毫秒）**; use **Asking hold / 提问驻留** and **Done hold / 完成驻留** for the two timings. |
+| 4 | Expand a state row (`idle` / `running` / `asking` / `done`) to edit **Effect / 特效**, **Colors / 颜色** (each swatch is a native color picker) and **Cycle (ms) / 周期（毫秒）** (shown only for animated states — static states have no cycle); use **Asking hold / 提问驻留** and **Done hold / 完成驻留** for the two timings. |
 
 Changes are saved through the settings transport into the profile's `settings.yaml` and applied to the running tab within ~1 s — no reload, no restart. See [Configure](#configure) for the full key reference.
 
