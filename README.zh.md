@@ -148,9 +148,31 @@ config:
 - 权限 / **沙箱拦截**等待同样会显示为 `asking`：当 agent 命中沙箱拒绝并请求提权（`sandbox_permissions` + `justification`），或其他工具需要征得同意时，审批服务会先写入一条 `approval/asked` 会话事件并阻塞 agent，直到你做出决定。插件监听 `session/event`（并以实时会话日志的权威折叠作为兜底）在整个等待期间将会话置为 `asking` 状态，收到 `approval/decided` 后清除。
 - 浏览器脚本每秒轮询 `/dsh-web-icon-status.json`，首次获取 `base.svg`，然后每个 `requestAnimationFrame` 周期把 favicon 重建为 `data:image/svg+xml,…` URI——把 `__COLOR__` 占位符替换为状态配置的颜色，并应用该状态配置的特效。状态响应还会携带当前的每状态视觉配置，因此设置保存后约 1 秒内（下一个轮询 tick）即同步到已打开的标签页，无需刷新。浏览器不会播放 SVG favicon 的 CSS 动画，所以一切动画都由 JS 驱动。由于浏览器在**隐藏（后台）标签页会暂停 `requestAnimationFrame`**，轮询还会为动画态补绘一帧按墙钟时间计算的画面——后台标签页保持粗粒度动画（约每 1 秒）而不会冻结，切回前台后恢复满速动画。轮询还能**扛住 host 重启**：瞬时请求失败时先还原原始图标，并在下一个 tick 重试（SPA 原地重连，无需手动刷新图标即可恢复）。
 
+## 浏览器支持与已知限制
+
+favicon 本质是一张图片，浏览器不会在标签页 UI 里运行 SVG 自带的 CSS/JS 动画——每一帧都在本插件里由 JavaScript 生成。
+
+| 浏览器 | SVG favicon | 逐帧换色 / 换特效 | 说明 |
+| --- | --- | --- | --- |
+| Chrome / Edge | ✅ | ✅ 顺滑 | 实时重读 `<link rel=icon>`；`data:` URI 的 SVG 可用。 |
+| Firefox | ✅ | ✅ 顺滑 | 对 SVG favicon 支持良好（且会响应其 `prefers-color-scheme`，本插件未使用）。 |
+| Safari（macOS） | ✅ 渲染为静态图 | ⚠️ 尽力而为 | 忽略 SVG 内嵌 CSS；favicon 缓存激进。 |
+| Safari（iOS） | ✅ 渲染为静态图 | ⚠️ 基本不刷 | 通常需重新访问标签页才刷新。 |
+
+已知限制（截至 Safari 26.3）：
+
+- **favicon 有专属缓存。** Chrome 用 favicon 数据库、Firefox 用 `favicons.sqlite`、**Safari 用系统级图标缓存**——清普通缓存都清不掉，WebKit 甚至会把「无图标」这一状态也缓存起来。这就是改了图标后，已打开的标签页还可能显示旧图标的原因。本插件已通过「给 `base.svg` 与状态端点设置 `Cache-Control: no-store`、请求携带 freshness 参数（`?t=Date.now()`）、每次切换状态时重建 `<link rel=icon>` 节点」来缓解。
+- **Safari 渲染 SVG favicon，但忽略其内部 CSS**——不支持 `@media`、`prefers-color-scheme`、CSS 动画。所以所有上色必须烘焙进每一帧的标记（本插件正是这么做的），而不能依赖 CSS 变量。
+- **`data:` URI 的 SVG favicon 在 Safari 不可靠**（WebKit bug 236616，仍未关闭；Safari 17.6 复现）。本插件当前每帧都生成 `data:image/svg+xml` URI，因此在 Safari 上标签页图标可能完全不显示——这是最大的已知缺口。
+- **Safari 的动态 JS 更新为 hit-or-miss**，可能需要刷新一次；Safari 会「锁定」它首次看到的图标。目前没有保证可靠的、符合规范的手段能在 Safari 中实时更换 favicon。
+- **固定标签页图标（`<link rel="mask-icon">`）使用独立缓存**，与普通 favicon 分开；它是靠 `color` 属性着色的**单色剪影**——仅 macOS + 固定标签页、页面加载时读取一次、并非实时。
+
+完整机制与来源（WebKit bugs、Stack Overflow、浏览器工程博客）以及让 Safari 更顺滑变色/切换的推荐路径见 [`docs/safari-favicon-research.md`](./docs/safari-favicon-research.md)。
+
 ## 已知限制
 
 - favicon 的 SVG CSS 动画在浏览器标签页 UI 中不会运行——所有特效都由 JavaScript 每帧重建 data-URI 实现，这是零依赖设计的刻意取舍。（本文档中的动画预览只是演示素材——真实 favicon 的动画始终由 JS 驱动。）
+- favicon 行为因浏览器而异，其中 Safari 限制最多——见 [浏览器支持与已知限制](#浏览器支持与已知限制)。
 - `base.svg` 模板必须保留 `#p { fill: … }` 规则中的 `__COLOR__` 占位符；浏览器会替换该标记为每帧上色。
 - 插件运行在 **host** 平面，必须挂载进 profile 的组合配置，不能作为会话级 agent preset。
 - 文件读取走 `fs` 服务，以配置的 `iconsDir` 为 `cwd`。请确保该路径在部署环境的沙箱策略下可读。

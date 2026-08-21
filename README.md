@@ -154,9 +154,31 @@ service under the `web-icon-indicator` namespace (a schemastery schema in
 - Permission / **sandbox-interception** waits are also surfaced as `asking`: when the agent hits a sandbox denial and escalates (`sandbox_permissions` + `justification`), or any other tool asks for approval, the approval service appends an `approval/asked` session event and blocks the agent until you decide. The plugin watches `session/event` (with an authoritative fold over the live session log as a fallback) and pins the session into the `asking` state for that whole wait, clearing it on `approval/decided`.
 - The browser script polls `/dsh-web-icon-status.json` once a second, fetches `base.svg` once, and then on every `requestAnimationFrame` tick rebuilds the favicon as a `data:image/svg+xml,…` URI — replacing the `__COLOR__` placeholder with the state's configured color and applying the state's configured effect. The status response also echoes the current per-state visual config, so a settings save reaches the running tab on the next poll (~1 s) without a reload. Browsers don't play favicon SVG CSS animations, so all motion is JS-driven. Because browsers pause `requestAnimationFrame` in hidden tabs, the poll also repaints a wall-clock frame for animated states, so background tabs keep animating (coarsely) instead of freezing; full-speed animation resumes when the tab is visible again. The poll also survives host restarts: a transient fetch failure restores the original icon and retries on the next tick (the SPA reconnects in place, so the icon comes back without a manual refresh).
 
+## Browser support & known limitations
+
+The favicon is a plain image, so browsers never run the SVG's own CSS/JS animation inside the tab UI — every frame is rendered here in JavaScript. How well a *changing* favicon is displayed differs by browser:
+
+| Browser | SVG favicon | Live per-state color/effect | Why |
+| --- | --- | --- | --- |
+| Chrome / Edge | ✅ | ✅ smooth | Re-reads `<link rel=icon>` live; `data:`-URI SVGs are fine. |
+| Firefox | ✅ | ✅ smooth | Renders SVG favicons well (and honors their `prefers-color-scheme`, unused here). |
+| Safari (macOS) | ✅ rendered static | ⚠️ best-effort | Ignores in-SVG CSS; aggressive icon caching. |
+| Safari (iOS) | ✅ rendered static | ⚠️ rarely | Unlikely to refresh without revisiting the tab. |
+
+Known limitations (current as of Safari 26.3):
+
+- **Favicons have their own cache.** Chrome keeps a favicon database, Firefox a `favicons.sqlite`, and **Safari a system-level icon cache** — none of which a normal *clear cache* touches, and WebKit even caches the "no icon" case. That is why a changed icon can linger for an existing tab. The plugin already mitigates this: it serves `base.svg` and the status endpoint with `Cache-Control: no-store`, bundles a freshness query (`?t=Date.now()`) on its fetches, and replaces the `<link rel=icon>` node on each state change.
+- **Safari renders SVG favicons but ignores their internal CSS** — no `@media`, no `prefers-color-scheme`, no CSS animation. So all recoloring must be baked into each frame's markup (which the plugin does) rather than driven by CSS variables.
+- **`data:`-URI SVG favicons are unreliable in Safari** (WebKit bug 236616, still open; reproduced on Safari 17.6). The plugin currently builds each frame as a `data:image/svg+xml` URI, so on Safari the tab icon may not render at all — the biggest known gap.
+- **Dynamic JS updates in Safari are hit-or-miss;** they may require a reload, and Safari "locks onto" the first icon it sees. There is no guaranteed, spec-supported way to swap a favicon live in Safari today.
+- **Pinned-tab icon (`<link rel="mask-icon">`) uses its own cache**, separate from the regular favicon, and is a single-colour silhouette tinted by the `color` attribute — macOS + pinned-tab only, read at page load, not live.
+
+Full mechanics with sources (WebKit bugs, Stack Overflow, browser-engineering blogs) and a recommended path toward smoother Safari colour changes live in [`docs/safari-favicon-research.md`](./docs/safari-favicon-research.md).
+
 ## Caveats
 
 - Favicon SVG CSS animations do not run inside the browser's tab UI — all effects are produced in JavaScript by rebuilding the data-URI each frame. This is a deliberate, zero-dependency design. (The animated previews in this README are demo assets for illustration only — the favicon itself is JS-animated.)
+- Favicon behavior differs by browser, and Safari is the most limited — see [Browser support & known limitations](#browser-support--known-limitations).
 - The base template must keep its `__COLOR__` placeholder in the `#p { fill: … }` rule; the browser replaces that token to color each frame.
 - The plugin runs in the **host** plane; it must be mounted into a profile's composition, not a session-scoped agent preset.
 - File reads go through the `fs` service with the configured `iconsDir` as `cwd`. Make sure that path is readable under your deployment's sandbox policy.
