@@ -9,7 +9,7 @@ Agent operating instructions for `dsh-web-icon-indicator` — a DSH (DeepSeek Ha
 ```bash
 # Manual verification loop (the only way to validate changes):
 dsh plugin --profile web add <this-repo-path>            # install into web profile
-curl http://localhost:3080/dsh-web-icon-status.json      # aggregated state JSON: {"state","since"}
+curl http://localhost:3080/dsh-web-icon-status.json      # aggregated state JSON: {"state","since","states"}
 ```
 
 ## Upstream DSH source
@@ -41,14 +41,49 @@ The DSH platform this plugin runs on lives at **https://github.com/deepseek-ai/d
 - Keep changes small and localized to `lib/index.js` / `lib/client.js`; prefer editing over restructuring.
 - Commit style: `init:` / `feat:` / `fix:` / `docs:` (see git log).
 
+## Settings card contract (cookbook)
+
+Canonical reference: the DSH cookbook "adding a settings card"
+(<https://deepseek-harness.github.io/deepseek-harness/en/reference/cookbook/adding-a-settings-card>).
+The rules below pin its requirements to this repo; follow them on any settings-card change.
+
+- **Namespace is the join key.** `web-icon-indicator` appears identically in
+  `lib/index.js` (`SETTINGS_NAMESPACE`), `lib/client.js` (`NS`), and the slot
+  registration's `key` — change all three together.
+- **Host half registers the namespace** through `installSettingsSection` in
+  `apply()` (layers the composition entry as `base` under the user document;
+  keeps working when no settings provider is mounted). Keep the schema in
+  `CONFIG_SCHEMA`; if a future field needs it, `role("secret")` keeps a value
+  off every response and `applies: "restart"` marks a change as next-start-only.
+- **The card owns everything inside it** — chrome, controls, copy. The
+  bundle-purity gate rejects value imports across plugins, so `PluginCard`,
+  `CardForm`, `ValueField`, … from `@deepseek-ai/dsh-client-ui-settings-plugins`
+  are off limits: `lib/client.js` keeps its own staging (the `drafts` map) and
+  its own revision-fenced writes.
+- **Read/write through `ctx.settingsScope`.** The snapshot carries resolved
+  `value`, composition `base`, and raw `user`; a field counts as overridden by
+  key **presence** in `user`, never by a value comparison. `scope.set(field, value)`
+  stores one field; `scope.unset(field)` clears it back to the composition layer.
+- **Slot registration shape** (in `apply()`): `ctx.slots.register({ name:
+  "settings.plugin.item", key: NS, locale: LOCALE, inject: () => ({ scope, t }) },
+  IconConfigCard)`. The tab dispatches one slot key per served namespace, so a
+  card renders only while the Host serves its namespace.
+- **Loader dependency**: `package.json` → `dsh.client.inject` must include
+  `@deepseek-ai/dsh-client-ui-settings-plugins` (the package dispatching the
+  `settings.plugin.item` slot) — already present; keep it.
+- **Bundle format**: `lib/client.js` stays the loader's lazy-CJS factory
+  artifact (hand-written `window.__ModuleLoader__.load({ id, factory })`, no
+  build step) with `dsh.client` and the `./client` export declared.
+
 ## Workflows
 
 ### Change the icon, a color, an effect, or a timing
 1. Icon geometry: edit `icons/base.svg` (keep the `__COLOR__` placeholder in `#p { fill: … }`). Colors/effects/timings: edit `DEFAULTS` in `lib/index.js` — `states.<state>` entries (`effect` / `colors[]` / `speed`), plus `askingHoldMs` / `doneHoldMs` — and keep the corresponding `CONFIG_SCHEMA` defaults in sync (settings validation + the settings-page card read from it).
-2. No server restart needed for the icon: `base.svg` is re-read per request and the browser re-fetches it with cache-busting (`?t=Date.now()`). Color/effect/timing changes require re-injecting the script (reload the tab) or a DSH web rebuild.
+2. No server restart needed for the icon: `base.svg` is re-read per request and the browser re-fetches it with cache-busting (`?t=Date.now()`). Color/effect/timing changes **saved through the settings card** reach the running tab via the status poll within ~1 s (no reload); changing the code-level `DEFAULTS` in `lib/index.js` still requires re-injecting the script (reload the tab) or a DSH web rebuild.
 3. If defaults/keys changed: update the config tables in **both** READMEs, `lib/types/index.d.ts`, and — when the card exposes the key — the field in `lib/client.js`.
 
 ### Change the settings card (fields, labels, save/reset)
+0. Stay inside the [Settings card contract](#settings-card-contract-cookbook): the `web-icon-indicator` join key, the `settings.plugin.item` registration shape, the purity gate (no value imports of chrome/form model), and write-through-`ctx.settingsScope` staging.
 1. Edit `lib/client.js`: the `IconConfigCard` component + the `en`/`zh` dictionaries. The card reads the scope snapshot (`status/writable/value/base/user`) and writes via `scope.set(field, value)` / `scope.unset(field)`.
 2. No build step: the file is served as-is at `/plugins/dsh-web-icon-indicator/client.js`. A NEW `dsh.client` declaration (or a first-time `lib/client.js`) is only scanned at profile start; content changes to an existing bundle are re-hashed by HMR.
 3. Verify with the SSR smoke test pattern (mock `window.__ModuleLoader__`, run the factory with stubbed `require("react")` and `require("@deepseek-ai/dsh-client-ui-primitives")`, render the card via `react-dom/server`).
@@ -70,7 +105,7 @@ No automated tests. Verify manually:
 1. Open the DSH Web GUI tab and watch the favicon.
 2. Trigger an `ask_user_question` tool call → favicon must blink yellow/red for at least `askingHoldMs`.
 3. End a turn → `done` icon for `doneHoldMs`, then back to `idle`.
-4. `curl` the status endpoint to confirm the aggregate `{ state, since }` JSON.
+4. `curl` the status endpoint to confirm the aggregate `{ state, since, states }` JSON.
 
 ## Constraints (do not break)
 
@@ -80,8 +115,10 @@ No automated tests. Verify manually:
 - Keep all animation in the browser script: favicons do not play SVG CSS animations, so every effect (`blink`, `breath`, `rainbow`, `heartbeat`, `bounce`, …) must be produced by JS rebuilding the data-URI each `requestAnimationFrame` tick and swapping the favicon `href`. Never add in-image SVG animation to `base.svg`. Browsers pause `requestAnimationFrame` in hidden tabs, so `apply()` paints the first frame synchronously (state changes show even while hidden) and the 1 s `poll()` repaints on unchanged states: animated states get a wall-clock frame (`ANIM_START` + `Date.now()` phase — coarse ≈ poll-rate background animation, full-speed rAF when visible), static states repaint (self-heal). Keep those fallback paths working when touching the animation loop.
 - Keep injection idempotent — guard on `window.__DSH_WEB_ICON_INDICATOR__` in both `webServer.tapIndex` and the injected script.
 - Keep the status poll alive across transient failures: the `poll()` catch restores the original icon and retries on the next tick — it must NEVER `clearInterval` on a fetch failure. The SPA reconnects in place across host restarts, so a dead poll would leave the tab without an icon until a manual refresh.
+- Keep the live config sync lossless: the status response echoes `states` (the resolved per-state visual config) and `syncCfg` swaps it in with a `PREV_STATE = null` repaint when the serialized value changes. It must stay inside the poll's `.then()` — never in the `.catch()` path — and a payload without `states` (older host) must leave the baked `__CFG__` untouched. `statusPath` / `iconPathPrefix` route paths are baked at registration, so changing those keys still requires a restart.
 - Keep the plugin host-plane only: mount via profile composition, never as a session-scoped agent preset.
 - Use the existing `sandboxPolicy` injection (currently unused) or remove it — do not leave it dangling without a note.
+- Don't break the settings-card contract (see *Settings card contract (cookbook)*): the `web-icon-indicator` join key, the `settings.plugin.item` registration shape, the bundle-purity gate (never value-import `PluginCard` / `CardForm` / `fields` from `@deepseek-ai/dsh-client-ui-settings-plugins`), and staging writes through `ctx.settingsScope`.
 
 ## Do NOT
 

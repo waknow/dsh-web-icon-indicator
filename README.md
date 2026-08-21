@@ -102,15 +102,19 @@ service under the `web-icon-indicator` namespace (a schemastery schema in
 
 - **Web GUI:** open **设置 → 插件 → 插件配置** — a *Favicon indicator* card
   edits the same keys (asking/done hold, and per-state effect / colors /
-  cycle), staged and saved through the settings transport.
+  cycle), staged and saved through the settings transport. Each state is a
+  collapsible row showing a color dot and a one-line summary (`blink ·
+  #E5484D ⇄ #FACC15 · 400ms`); expanding a row reveals its three fields, and
+  the colors field previews parsed swatches live.
 - **Persistence:** values land in the profile's `settings.yaml` (default
   `~/.dsh/settings.yaml`) as a `web-icon-indicator:` section. The composition
   entry stays the `base` layer; resolution order is schema defaults →
   composition entry → settings document user layer.
-- **No server restart** for host-side timing changes (`askingHoldMs` /
-  `doneHoldMs` apply live). Visual changes need a tab reload — the injected
-  browser script bakes config at injection time, and the card re-injects it on
-  the next page load.
+- **No server restart, no tab reload** for settings-card saves: `askingHoldMs` /
+  `doneHoldMs` apply live host-side, and per-state visual config (effect /
+  colors / cycle) is synced into the running tab through the status poll within
+  ~1 s. Only code-level default changes in `lib/index.js` need a tab reload (or
+  a DSH web rebuild).
 - The browser half is a hand-written `lib/client.js` (ModuleLoader factory
   format — no build step, no runtime deps beyond the shell's `react`). The DSH
   client scanner picks a new `dsh.client` declaration up on the next profile
@@ -124,7 +128,7 @@ service under the `web-icon-indicator` namespace (a schemastery schema in
 - Status is aggregated across live `agents.list()` with priority `asking > running > done > idle`. The aggregation runs a `reconcile()` step on every request to detect running → idle transitions, because `agent/status`'s idle delivery is not guaranteed at turn end.
 - `ask_user_question` tool calls (via `tools/pre-execute` / `tools/result`) flip the session into `asking` with a configurable minimum-hold so the icon stays visible even when the user answers immediately.
 - Permission / **sandbox-interception** waits are also surfaced as `asking`: when the agent hits a sandbox denial and escalates (`sandbox_permissions` + `justification`), or any other tool asks for approval, the approval service appends an `approval/asked` session event and blocks the agent until you decide. The plugin watches `session/event` (with an authoritative fold over the live session log as a fallback) and pins the session into the `asking` state for that whole wait, clearing it on `approval/decided`.
-- The browser script polls `/dsh-web-icon-status.json` once a second, fetches `base.svg` once, and then on every `requestAnimationFrame` tick rebuilds the favicon as a `data:image/svg+xml,…` URI — replacing the `__COLOR__` placeholder with the state's configured color and applying the state's configured effect. Browsers don't play favicon SVG CSS animations, so all motion is JS-driven. Because browsers pause `requestAnimationFrame` in hidden tabs, the poll also repaints a wall-clock frame for animated states, so background tabs keep animating (coarsely) instead of freezing; full-speed animation resumes when the tab is visible again. The poll also survives host restarts: a transient fetch failure restores the original icon and retries on the next tick (the SPA reconnects in place, so the icon comes back without a manual refresh).
+- The browser script polls `/dsh-web-icon-status.json` once a second, fetches `base.svg` once, and then on every `requestAnimationFrame` tick rebuilds the favicon as a `data:image/svg+xml,…` URI — replacing the `__COLOR__` placeholder with the state's configured color and applying the state's configured effect. The status response also echoes the current per-state visual config, so a settings save reaches the running tab on the next poll (~1 s) without a reload. Browsers don't play favicon SVG CSS animations, so all motion is JS-driven. Because browsers pause `requestAnimationFrame` in hidden tabs, the poll also repaints a wall-clock frame for animated states, so background tabs keep animating (coarsely) instead of freezing; full-speed animation resumes when the tab is visible again. The poll also survives host restarts: a transient fetch failure restores the original icon and retries on the next tick (the SPA reconnects in place, so the icon comes back without a manual refresh).
 
 ## Caveats
 

@@ -101,13 +101,16 @@ config:
 
 - **Web GUI：** 打开 **设置 → 插件 → 插件配置**，会出现 *标签页图标指示器*
   卡片，可编辑同样的键（提问/完成驻留，以及每个状态的特效 / 颜色 / 周期），
-  通过 settings 传输层暂存并保存。
+  通过 settings 传输层暂存并保存。每个状态是一行可折叠条目，带主色圆点和一行
+  摘要（如 `blink · #E5484D ⇄ #FACC15 · 400ms`）；展开该行才显示它的三个字段，
+  颜色输入框旁会实时预览解析出的色块。
 - **持久化：** 值写入 profile 的 `settings.yaml`（默认 `~/.dsh/settings.yaml`）
   的 `web-icon-indicator:` 段。合成条目仍是 `base` 层；解析顺序为 schema 默认值
   → 合成条目 → 设置文档用户层。
-- **无需重启服务器**即可让主机侧计时（`askingHoldMs` / `doneHoldMs`）生效；
-  视觉变化需要重载标签页——注入的浏览器脚本在注入时烘焙配置，卡片会在下次
-  页面加载时重新注入。
+- **无需重启服务器、无需刷新标签页**即可让设置卡片的修改生效：`askingHoldMs` /
+  `doneHoldMs` 在主机侧即时生效；各状态的视觉配置（特效 / 颜色 / 周期）会随状态
+  轮询同步进正在运行的标签页，约 1 秒内生效。只有改 `lib/index.js` 里的代码级
+  默认值才需要重载标签页（或重新构建 DSH Web）。
 - 浏览器半区是手写的 `lib/client.js`（ModuleLoader factory 格式——无构建步骤、
   无额外运行期依赖，仅用 shell 自带的 `react`）。DSH 客户端扫描器会在下次启动
   profile 时识别新的 `dsh.client` 声明。
@@ -119,7 +122,7 @@ config:
 - 状态按 `agents.list()` 聚合，优先级 `asking > running > done > idle`。每次请求都会执行一次 `reconcile()` 检测 running → idle 的转换，因为 `agent/status` 的 idle 事件在回合结束时并不保证送达。
 - `ask_user_question` 工具调用（通过 `tools/pre-execute` / `tools/result`）把会话置为 `asking`，带可配置的最小保持时长，即使你立刻回答，图标也会保持可见。
 - 权限 / **沙箱拦截**等待同样会显示为 `asking`：当 agent 命中沙箱拒绝并请求提权（`sandbox_permissions` + `justification`），或其他工具需要征得同意时，审批服务会先写入一条 `approval/asked` 会话事件并阻塞 agent，直到你做出决定。插件监听 `session/event`（并以实时会话日志的权威折叠作为兜底）在整个等待期间将会话置为 `asking` 状态，收到 `approval/decided` 后清除。
-- 浏览器脚本每秒轮询 `/dsh-web-icon-status.json`，首次获取 `base.svg`，然后每个 `requestAnimationFrame` 周期把 favicon 重建为 `data:image/svg+xml,…` URI——把 `__COLOR__` 占位符替换为状态配置的颜色，并应用该状态配置的特效。浏览器不会播放 SVG favicon 的 CSS 动画，所以一切动画都由 JS 驱动。由于浏览器在**隐藏（后台）标签页会暂停 `requestAnimationFrame`**，轮询还会为动画态补绘一帧按墙钟时间计算的画面——后台标签页保持粗粒度动画（约每 1 秒）而不会冻结，切回前台后恢复满速动画。轮询还能**扛住 host 重启**：瞬时请求失败时先还原原始图标，并在下一个 tick 重试（SPA 原地重连，无需手动刷新图标即可恢复）。
+- 浏览器脚本每秒轮询 `/dsh-web-icon-status.json`，首次获取 `base.svg`，然后每个 `requestAnimationFrame` 周期把 favicon 重建为 `data:image/svg+xml,…` URI——把 `__COLOR__` 占位符替换为状态配置的颜色，并应用该状态配置的特效。状态响应还会携带当前的每状态视觉配置，因此设置保存后约 1 秒内（下一个轮询 tick）即同步到已打开的标签页，无需刷新。浏览器不会播放 SVG favicon 的 CSS 动画，所以一切动画都由 JS 驱动。由于浏览器在**隐藏（后台）标签页会暂停 `requestAnimationFrame`**，轮询还会为动画态补绘一帧按墙钟时间计算的画面——后台标签页保持粗粒度动画（约每 1 秒）而不会冻结，切回前台后恢复满速动画。轮询还能**扛住 host 重启**：瞬时请求失败时先还原原始图标，并在下一个 tick 重试（SPA 原地重连，无需手动刷新图标即可恢复）。
 
 ## 已知限制
 
