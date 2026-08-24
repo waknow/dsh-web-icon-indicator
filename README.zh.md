@@ -2,6 +2,8 @@
 
 > 📖 [English](README.md) · [中文文档](README.zh.md)
 
+[![awesome · DSH plugin](https://awesome-dsh-plugin.com/badge.svg)](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)
+
 浏览器标签页 favicon 实时反映 DSH 会话状态——`待机` / `运行中` / `提问` / `完成`——让你在标签页置于后台时也能一眼看出是否有会话需要处理。
 
 ## ✨ 功能特性

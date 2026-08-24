@@ -2,6 +2,8 @@
 
 > 📖 [中文文档](README.zh.md) · [English](README.md)
 
+[![awesome · DSH plugin](https://awesome-dsh-plugin.com/badge.svg)](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)
+
 Browser tab favicon reflects the current DSH session state — `idle` / `running` / `asking` / `done` — so you can see at a glance whether a session needs your attention, even when the tab is in the background.
 
 ## ✨ What it does
