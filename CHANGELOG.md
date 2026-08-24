@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3](https://github.com/waknow/dsh-web-icon-indicator/compare/v0.2.2...v0.2.3) (2026-08-24)
+
+### Changed
+
+* add CHANGELOG.md with release history; link it from READMEs ([262730c](https://github.com/waknow/dsh-web-icon-indicator/commit/262730c83449b36fa60442204b3362d8a8b43e8f))
+
 ## [0.2.2] - 2026-08-24
 
 ### Changed
@@ -48,9 +54,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial release: browser tab favicon mirrors the DSH session state (`idle` / `running` / `asking` / `done`) with a single-color whale icon ([c8b66cb](https://github.com/waknow/dsh-web-icon-indicator/commit/c8b66cb)).
 - Repository metadata and install-from-source instructions ([69f550c](https://github.com/waknow/dsh-web-icon-indicator/commit/69f550c)).
-
-[Unreleased]: https://github.com/waknow/dsh-web-icon-indicator/compare/v0.2.2...HEAD
-[0.2.2]: https://github.com/waknow/dsh-web-icon-indicator/compare/0.2.1...v0.2.2
-[0.2.1]: https://github.com/waknow/dsh-web-icon-indicator/compare/0.2.0...0.2.1
-[0.2.0]: https://github.com/waknow/dsh-web-icon-indicator/compare/0.1.0...0.2.0
-[0.1.0]: https://github.com/waknow/dsh-web-icon-indicator/releases/tag/0.1.0
