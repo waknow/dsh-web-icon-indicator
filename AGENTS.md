@@ -27,7 +27,7 @@ The DSH platform this plugin runs on lives at **https://github.com/deepseek-ai/d
 | `icons/base.svg` | The single whale template with a `__COLOR__` placeholder; recolored/animated in the browser | The filename is locked by a route regex — treat as immutable |
 | `cordis.patch.yml` | Install patch that inserts the plugin row into the profile composition | Referenced by `package.json` → `dsh.bundle.patch` |
 | `README.md` / `README.zh.md` | User docs (EN / zh) | Update both on any behavior/config/icon change |
-| `package.json` | Metadata, `exports` (incl. `./client`), `dsh.client` declaration, `peerDependencies` (`@deepseek-ai/schemastery`, `@deepseek-ai/dsh-settings`), `files` allowlist | No `scripts` field |
+| `package.json` | Metadata, `exports` (incl. `./client`), `dsh.client` declaration, `peerDependencies` (`@deepseek-ai/schemastery`, `@deepseek-ai/dsh-settings`), `files` allowlist, `scripts` (`release*` → `commit-and-tag-version`), `devDependencies` (`commit-and-tag-version`) | Release scripts — see *Release* |
 | `.github/workflows/publish.yml` | CI: publishes to npm on `v*` tags via **OIDC trusted publishing** (no token secret; `npm ci` + optional test/build, then `npm publish`) | Keeps the release flow hands-off — see *Release* |
 
 ## Code style & conventions
@@ -96,10 +96,16 @@ The rules below pin its requirements to this repo; follow them on any settings-c
 4. Update the state tables in **both** READMEs (and the card's `STATE_NAMES` in `lib/client.js` if the card should edit it).
 
 ### Release
-1. Bump `version` in `package.json`.
-2. `npm install` — syncs the tracked `package-lock.json` root version.
-3. Commit, tag `v<version>`, and `git push --tags`.
-4. GitHub Actions (`.github/workflows/publish.yml`) publishes to npm on the `v*`
+1. `npm run release:patch` (or `release:minor` / `release:major`) — runs
+   `commit-and-tag-version` (`.versionrc.json`): bumps `version` in
+   `package.json` **and** `package-lock.json`, prepends the generated section
+   to `CHANGELOG.md` (from conventional commit messages; `feat`→Added,
+   `fix`→Fixed, docs/refactor/ci/perf→Changed, `revert`→Removed, `chore`
+   hidden), commits, and tags `v<version>`. Review the diff — the tool is not
+   deterministic-proof (e.g. it glosses over `#`-prefixed sections), so eyeball
+   the new CHANGELOG heading and the spacing around it before pushing.
+2. `git push && git push --tags`.
+3. GitHub Actions (`.github/workflows/publish.yml`) publishes to npm on the `v*`
    tag (Node 24: `npm ci`, `npm test` / `npm run build` if present, then
    `npm publish`). Auth is **npm trusted publishing via OIDC**: the workflow's
    `id-token: write` lets npm exchange the GitHub Actions OIDC token for a
@@ -109,6 +115,8 @@ The rules below pin its requirements to this repo; follow them on any settings-c
    <https://docs.npmjs.com/trusted-publishers>; requires 2FA and a public
    package). The workflow verifies the tag matches `package.json` and fails
    fast otherwise.
+4. `gh release create v<version> ...` for the GitHub Releases page (optional but
+   recommended; `CHANGELOG.md` ships inside the npm tarball via `files`).
 
 ## Testing
 
@@ -134,7 +142,7 @@ No automated tests. Verify manually:
 
 ## Do NOT
 
-- Add a build system, test framework, linter, or NEW dependencies without an explicit request. This repo is deliberately zero-build, zero-test; the only runtime deps are `@deepseek-ai/schemastery` + `@deepseek-ai/dsh-settings` (settings registration, added on request), declared as `peerDependencies` (the host harness provides them).
+- Add a build system, test framework, linter, or NEW dependencies without an explicit request. This repo is deliberately zero-build, zero-test; the only runtime deps are `@deepseek-ai/schemastery` + `@deepseek-ai/dsh-settings` (settings registration, added on request), declared as `peerDependencies` (the host harness provides them). The single `devDependency` is `commit-and-tag-version` (release tooling only — added on request; never promote it to a runtime dep).
 - Rename `base.svg` or change the icon route regex `^base\.svg$` without updating the state machine, browser script, types, and both READMEs together.
 - Break the plugin contract `{ name, inject, config, apply(ctx) }` (+ `SETTINGS_NAMESPACE` / `CONFIG_SCHEMA`) or the `dsh.bundle.patch` → `cordis.patch.yml` wiring.
 - Let `agent/turn-stopping` override the `asking` pin while it is active.
