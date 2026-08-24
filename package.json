@@ -52,6 +52,7 @@
     "assets",
     "docs",
     "cordis.patch.yml",
+    "CHANGELOG.md",
     "README.md",
     "README.zh.md",
     "LICENSE"

@@ -1,6 +1,6 @@
 # dsh-web-icon-indicator
 
-> 📖 [中文文档](README.zh.md) · [English](README.md)
+> 📖 [中文文档](README.zh.md) · [English](README.md) · 📝 [Changelog](CHANGELOG.md) · [Releases](https://github.com/waknow/dsh-web-icon-indicator/releases)
 
 [![awesome · DSH plugin](https://awesome-dsh-plugin.com/badge.svg)](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)
 
