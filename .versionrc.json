@@ -1,0 +1,20 @@
+{
+  "header": "# Changelog\n\nAll notable changes to **dsh-web-icon-indicator** are documented here.\n\nThe format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),\nand this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).\n\n## [Unreleased]\n",
+  "types": [
+    { "type": "feat", "section": "### Added" },
+    { "type": "fix", "section": "### Fixed" },
+    { "type": "perf", "section": "### Changed" },
+    { "type": "refactor", "section": "### Changed" },
+    { "type": "docs", "section": "### Changed" },
+    { "type": "ci", "section": "### Changed" },
+    { "type": "chore", "section": "### Changed" },
+    { "type": "revert", "section": "### Removed" }
+  ],
+  "bumpFiles": [
+    "package.json",
+    "package-lock.json"
+  ],
+  "tagPrefix": "v",
+  "releaseCommitMessageFormat": "release: v{{currentTag}}",
+  "preset": "conventional-changelog-conventionalcommits"
+}
