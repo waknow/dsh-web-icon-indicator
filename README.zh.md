@@ -3,6 +3,9 @@
 > 📖 [English](README.md) · [中文文档](README.zh.md) · 📝 [更新记录](CHANGELOG.md) · [Releases](https://github.com/waknow/dsh-web-icon-indicator/releases)
 
 [![awesome · DSH plugin](https://awesome-dsh-plugin.com/badge.svg)](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)
+[![npm version](https://img.shields.io/npm/v/dsh-web-icon-indicator)](https://www.npmjs.com/package/dsh-web-icon-indicator)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-web-icon-indicator)](https://www.npmjs.com/package/dsh-web-icon-indicator)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 浏览器标签页 favicon 实时反映 DSH 会话状态——`待机` / `运行中` / `提问` / `完成`——让你在标签页置于后台时也能一眼看出是否有会话需要处理。
 

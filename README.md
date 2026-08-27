@@ -3,6 +3,9 @@
 > 📖 [中文文档](README.zh.md) · [English](README.md) · 📝 [Changelog](CHANGELOG.md) · [Releases](https://github.com/waknow/dsh-web-icon-indicator/releases)
 
 [![awesome · DSH plugin](https://awesome-dsh-plugin.com/badge.svg)](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)
+[![npm version](https://img.shields.io/npm/v/dsh-web-icon-indicator)](https://www.npmjs.com/package/dsh-web-icon-indicator)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-web-icon-indicator)](https://www.npmjs.com/package/dsh-web-icon-indicator)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 Browser tab favicon reflects the current DSH session state — `idle` / `running` / `asking` / `done` — so you can see at a glance whether a session needs your attention, even when the tab is in the background.
 
