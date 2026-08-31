@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>dsh-web-icon-indicator — 数字角标演示 (active agent count badge)</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1e222b;
+    --border: #2a2f3a;
+    --text: #e6e8ee;
+    --muted: #9aa1af;
+    --accent: #4da3ff;
+    --ok: #2ecc8f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: radial-gradient(1200px 600px at 50% -10%, #1a2230, var(--bg));
+    color: var(--text);
+    padding: 32px 16px 64px;
+  }
+  .wrap { width: min(940px, 100%); margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: .3px; }
+  .sub { color: var(--muted); margin: 0 0 24px; font-size: 14px; line-height: 1.65; }
+  .sub code { color: var(--accent); }
+  .sub b { color: var(--text); }
+
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+  .card + .card { margin-top: 16px; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 14px; }
+  .card h2 .badge-inline { text-transform: none; }
+
+  .badge-inline {
+    display: inline-block; padding: 2px 9px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; background: var(--panel-2);
+    border: 1px solid var(--border); color: var(--text);
+  }
+
+  /* ---- preview ---- */
+  .preview-row { display: flex; align-items: flex-start; gap: 22px; flex-wrap: wrap; }
+  .big-tile {
+    width: 132px; height: 132px; border-radius: 14px; background: #f5f6f8;
+    display: grid; place-items: center; box-shadow: 0 4px 18px rgba(0,0,0,.45);
+    flex: none;
+  }
+  .big-tile img { width: 104px; height: 104px; image-rendering: auto; }
+  .preview-side { min-width: 260px; flex: 1; display: flex; flex-direction: column; gap: 14px; }
+
+  .tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tab {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: #232733; border: 1px solid #333a48; border-top: 1px solid #3a4252;
+    border-radius: 8px 8px 0 0; padding: 5px 12px 5px 8px;
+    font-size: 12px; color: #c9d2e0; box-shadow: 0 -1px 0 rgba(0,0,0,.3) inset;
+  }
+  .tab .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .tab .dot.r { background: #ff5f57; } .tab .dot.y { background: #febc2e; } .tab .dot.g { background: #28c840; }
+  .tab img { width: 16px; height: 16px; flex: none; }
+  .tab.active { border-color: var(--accent); box-shadow: 0 -2px 0 var(--accent) inset; }
+
+  .ladder { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
+  .ladder .rung { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .ladder .ring {
+    background: #f5f6f8; border-radius: 6px; display: grid; place-items: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,.35);
+  }
+  .ladder .ring img { display: block; }
+  .ladder .cap { font-size: 11px; color: var(--muted); }
+
+  .meta { font-size: 13px; color: var(--muted); line-height: 1.8; }
+  .meta b { color: var(--text); }
+
+  /* ---- controls ---- */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
+  .ctl { display: flex; flex-direction: column; gap: 6px; }
+  .ctl > label { font-size: 12px; font-weight: 600; color: var(--text); }
+  .ctl .hint { font-size: 11px; color: var(--muted); line-height: 1.5; }
+  .ctl input[type="range"] { accent-color: var(--accent); width: 100%; }
+  .ctl .range-val { font-size: 11px; color: var(--accent); font-family: ui-monospace, monospace; }
+
+  .count-row { display: flex; align-items: center; gap: 12px; }
+  .count-row input[type="range"] { flex: 1; accent-color: var(--accent); }
+  .count-num {
+    width: 74px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); padding: 7px 9px; font-size: 14px; font-weight: 700; text-align: center;
+    font-family: ui-monospace, monospace;
+  }
+  .count-num:focus { outline: none; border-color: var(--accent); }
+
+  .seg-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .seg-btn {
+    appearance: none; border: 1px solid var(--border); background: var(--panel-2);
+    color: var(--text); padding: 8px 13px; border-radius: 9px; cursor: pointer;
+    font-size: 13px; font-weight: 600; transition: .12s;
+  }
+  .seg-btn:hover { border-color: var(--accent); }
+  .seg-btn.active { border-color: var(--accent); background: rgba(77,163,255,.16); }
+  .seg-btn[data-state] { text-transform: capitalize; }
+
+  .check-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .check-row input { accent-color: var(--accent); width: 15px; height: 15px; }
+
+  .color-item { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+  .color-item label { font-size: 12px; font-weight: 600; display: block; margin-bottom: 8px; }
+  .color-item .row { display: flex; align-items: center; gap: 10px; }
+  .color-item input[type="color"] {
+    width: 40px; height: 40px; border: 1px solid var(--border); border-radius: 8px;
+    background: none; cursor: pointer; padding: 0; flex: none;
+  }
+  .color-item input[type="text"] {
+    flex: 1; background: var(--panel); border: 1px solid var(--border); border-radius: 7px;
+    color: var(--text); padding: 8px 10px; font-size: 12px; font-family: ui-monospace, monospace;
+  }
+  .color-item input[type="text"]:focus { outline: none; border-color: var(--accent); }
+  .speed-row { display: flex; align-items: center; gap: 10px; }
+  .speed-row input[type="number"] {
+    width: 110px; background: var(--panel); border: 1px solid var(--border); border-radius: 7px;
+    color: var(--text); padding: 8px 10px; font-size: 12px; font-family: ui-monospace, monospace;
+  }
+  .speed-row input[type="number"]:focus { outline: none; border-color: var(--accent); }
+
+  .datauri {
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 14px; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #b7c3d4; word-break: break-all; line-height: 1.6; max-height: 140px; overflow: auto;
+  }
+  .uri-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 10px; }
+  .copy-btn {
+    appearance: none; border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+    padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; transition: .12s;
+  }
+  .copy-btn:hover { border-color: var(--accent); }
+  .copy-btn.ok { border-color: var(--ok); color: var(--ok); }
+
+  .tip { font-size: 12.5px; color: var(--muted); line-height: 1.75; margin: 14px 0 0; }
+  .tip code { color: var(--accent); background: rgba(77,163,255,.1); padding: 1px 5px; border-radius: 5px; }
+  .hint { font-size: 12px; color: var(--muted); line-height: 1.6; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>🔢 数字角标演示 — active agent count badge</h1>
+    <p class="sub">
+      复刻 <code>lib/index.js</code> 注入脚本的渲染路径：鲸鱼用状态色上色 + JS 驱动特效，再叠加一层
+      「提示通道」（视觉方案）。<strong>固定（pin）标签页只显示 favicon、不显示标题</strong>，
+      所以主推<strong>满幅数字</strong>：数字像 Gmail 未读数那样占满图标，16px 下依然清晰；
+      其余通道保留作对比。本页浏览器标签的 favicon 会实时演示主推通道。
+    </p>
+
+    <div class="card">
+      <h2>预览 <span class="badge-inline" id="stateBadge">running</span></h2>
+      <div class="preview-row">
+        <div class="big-tile"><img id="bigImg" alt="favicon 大图预览" /></div>
+        <div class="preview-side">
+          <div class="tabs">
+            <span class="tab active"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><img id="tabFav" alt=""/> <span id="tabTitle" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">DeepSeek Harness</span></span>
+          </div>
+          <div class="ladder">
+            <div class="rung"><div class="ring"><img id="p16" alt="16px" width="16" height="16" /></div><span class="cap">16px</span></div>
+            <div class="rung"><div class="ring"><img id="p32" alt="32px" width="32" height="32" /></div><span class="cap">32px</span></div>
+            <div class="rung"><div class="ring"><img id="p64" alt="64px" width="64" height="64" /></div><span class="cap">64px</span></div>
+            <div class="rung"><div class="ring"><img id="p128" alt="128px" width="128" height="128" /></div><span class="cap">128px</span></div>
+          </div>
+          <div class="meta" id="metaLine">
+            活动 <b>0</b> 个 · 角标 <b>关闭</b> · running · static
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>活动 Agent 数（角标数字）</h2>
+      <div class="count-row">
+        <input type="range" id="countRange" min="0" max="120" step="1" value="3" />
+        <input class="count-num" id="countNum" type="number" min="0" max="120" step="1" value="3" />
+      </div>
+      <p class="tip">数字如何呈现由下方<strong>「提示通道」</strong>决定：标题数字 / 底部圆点 / 底部数字胶囊 / 数字角标（对比基准）；活动数变化时数字会 pop 缩放弹出（借鉴 favico.js 的入场动画）。</p>
+    </div>
+
+    <div class="card">
+      <h2>提示通道（视觉方案对比）</h2>
+      <div class="seg-row" id="modeRow">
+        <button class="seg-btn active" data-mode="bigNum">满幅数字（推荐）</button>
+        <button class="seg-btn" data-mode="dots">底部圆点</button>
+        <button class="seg-btn" data-mode="bottomNum">底部数字胶囊</button>
+        <button class="seg-btn" data-mode="corner">数字角标（对比）</button>
+        <button class="seg-btn" data-mode="title">标题数字（pin 无效）</button>
+      </div>
+      <p class="tip" id="modeHint">满幅数字（Gmail 未读式）：忙时整帧为状态色数字块（不画鲸鱼，pop 切换数字不穿帮），数字约占图标高度的 31%-52%，16px 与固定标签页都可读；空闲回到鲸鱼。本 demo 的浏览器标签 favicon 会实时演示。</p>
+      <div class="ctl" style="margin-top:12px">
+        <label>标题前缀样式（仅"标题数字"通道生效；固定标签页不显示标题）</label>
+        <div class="seg-row" id="prefixRow">
+          <button class="seg-btn active" data-prefix="dot">●N 圆点</button>
+          <button class="seg-btn" data-prefix="bracket">[N] 括号</button>
+          <button class="seg-btn" data-prefix="plain">N· 分隔</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>视觉参数（角标 · 胶囊）</h2>
+      <div style="margin-bottom:14px">
+        <button class="seg-btn" id="favicoPresetBtn" type="button">🎯 favico 风格预设</button>
+        <span class="hint" style="margin-left:8px">一键切到「数字角标」通道并套用 favico.js 经典观感：右下大红圆（r=14）+ 白色粗体数字（字号 14，高≈图标 56%）+ 无描边。</span>
+      </div>
+      <div class="grid">
+        <div class="ctl">
+          <label>显示角标</label>
+          <div class="check-row">
+            <input type="checkbox" id="badgeOn" checked />
+            <span>启用（推荐：0 时自动隐藏，见下）</span>
+          </div>
+        </div>
+        <div class="ctl">
+          <label>数字为 0 时</label>
+          <div class="seg-row" id="zeroRow">
+            <button class="seg-btn active" data-zero="hide">隐藏角标</button>
+            <button class="seg-btn" data-zero="show">显示 0</button>
+          </div>
+          <span class="hint">计划默认：active = 0（全部空闲）时角标不占用图标。</span>
+        </div>
+        <div class="ctl">
+          <label>角标位置（图标角落）</label>
+          <div class="seg-row">
+            <button class="seg-btn active" data-corner="tr">右上</button>
+            <button class="seg-btn" data-corner="tl">左上</button>
+            <button class="seg-btn" data-corner="br">右下</button>
+            <button class="seg-btn" data-corner="bl">左下</button>
+          </div>
+        </div>
+        <div class="ctl">
+          <label>角标底色</label>
+          <div class="seg-row" id="bgRow">
+            <button class="seg-btn active" data-bgmode="auto">跟随状态色</button>
+            <button class="seg-btn" data-bgmode="white">白色</button>
+            <button class="seg-btn" data-bgmode="custom">自定义</button>
+          </div>
+          <span class="hint">文字按底色亮度自动反色（黑/白）。"跟随状态色"会让角标随特效一起变色。</span>
+        </div>
+        <div class="ctl">
+          <label>自定义底色 <span id="customBgWrap" style="display:none"><input type="color" id="customBg" value="#ffffff" /></span></label>
+          <span class="hint">仅"自定义"模式生效。</span>
+        </div>
+        <div class="ctl">
+          <label>圆半径 <span class="range-val" id="radiusVal">9.0</span></label>
+          <input type="range" id="radiusRange" min="5" max="18" step="0.5" value="9" />
+          <span class="hint">角标贴住角落向外生长；多位数字时圆会自动再变大，保证数字不被裁切。</span>
+        </div>
+        <div class="ctl">
+          <label>字号 <span class="range-val" id="fontVal">13.0</span></label>
+          <input type="range" id="fontRange" min="6" max="22" step="0.5" value="13" />
+        </div>
+        <div class="ctl">
+          <label>白色描边 <span class="range-val" id="strokeVal">1.5</span></label>
+          <input type="range" id="strokeRange" min="0" max="3" step="0.25" value="1.5" />
+          <span class="hint">描边把角标和鲸鱼轮廓分隔开（鲸鱼 bbox 顶部 y≈6.9-9.8，角标会轻微压边）。</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>图标状态（复刻插件 DEFAULTS）</h2>
+      <div class="seg-row" id="stateRow">
+        <button class="seg-btn" data-state="idle">idle</button>
+        <button class="seg-btn active" data-state="running">running</button>
+        <button class="seg-btn" data-state="asking">asking</button>
+        <button class="seg-btn" data-state="done">done</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>特效（effects）</h2>
+      <div class="seg-row" id="fxRow">
+        <button class="seg-btn active" data-effect="static">static</button>
+        <button class="seg-btn" data-effect="blink">blink</button>
+        <button class="seg-btn" data-effect="breath">breath</button>
+        <button class="seg-btn" data-effect="rainbow">rainbow</button>
+        <button class="seg-btn" data-effect="heartbeat">heartbeat</button>
+        <button class="seg-btn" data-effect="bounce">bounce</button>
+      </div>
+      <p class="tip">切换状态会载入对应的默认特效/颜色/周期，之后可再手动改。</p>
+    </div>
+
+    <div class="card">
+      <h2>颜色 / 周期（colors[0] ⇄ colors[1]）</h2>
+      <div class="grid">
+        <div class="color-item">
+          <label>主色 colors[0]</label>
+          <div class="row">
+            <input type="color" id="c0Picker" value="#FACC15" />
+            <input type="text" id="c0Text" value="#FACC15" />
+          </div>
+        </div>
+        <div class="color-item">
+          <label>次色 colors[1]（blink/breath 用；留空自动推导更暗色）</label>
+          <div class="row">
+            <input type="color" id="c1Picker" value="#E5484D" />
+            <input type="text" id="c1Text" value="" placeholder="留空 = 自动" />
+          </div>
+        </div>
+        <div class="ctl">
+          <label>周期 speed (ms)</label>
+          <div class="speed-row">
+            <input type="number" id="speedNum" min="40" max="10000" step="20" value="1200" />
+            <span class="hint">blink 的切换间隔；static 忽略。</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>生成的 favicon 源（data URI）</h2>
+      <div class="uri-head">
+        <span class="badge-inline" id="uriLen">—</span>
+        <button class="copy-btn" id="copyBtn" type="button">复制</button>
+      </div>
+      <div class="datauri" id="srcOut"></div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  // 与 lib/index.js 注入脚本同一份鲸鱼路径（icons/base.svg 的 d 属性）
+  var PATH = "M48.8354 10.0479C48.3232 9.79199 48.1025 10.2798 47.8032 10.5278C47.7007 10.6079 47.6143 10.7119 47.5273 10.8076C46.7793 11.624 45.9048 12.1597 44.7622 12.0957C43.0923 12 41.666 12.5356 40.4058 13.8398C40.1377 12.2319 39.2476 11.272 37.8926 10.6558C37.1836 10.3359 36.4668 10.0156 35.9702 9.31982C35.6235 8.82373 35.5293 8.27197 35.356 7.72754C35.2456 7.3999 35.1353 7.06396 34.7651 7.00781C34.3633 6.94385 34.2056 7.2876 34.0479 7.57568C33.418 8.75195 33.1733 10.0479 33.1973 11.3599C33.2524 14.312 34.4736 16.6641 36.8999 18.3359C37.1758 18.5278 37.2466 18.7197 37.1597 19C36.9946 19.5757 36.7974 20.1357 36.624 20.7119C36.5137 21.0801 36.3486 21.1597 35.9624 21C34.6309 20.4321 33.481 19.5918 32.4644 18.5757C30.7393 16.8721 29.1792 14.9917 27.2334 13.52C26.7764 13.1758 26.3193 12.856 25.8467 12.5518C23.8618 10.584 26.1069 8.96777 26.627 8.77588C27.1704 8.57568 26.8159 7.8877 25.0591 7.896C23.3022 7.90381 21.6953 8.50391 19.647 9.30371C19.3477 9.42383 19.0322 9.51172 18.7095 9.58398C16.8501 9.22363 14.9199 9.14355 12.9033 9.37598C9.10596 9.80762 6.07275 11.6396 3.84326 14.7681C1.16455 18.5278 0.53418 22.7998 1.30664 27.2559C2.11768 31.9521 4.46582 35.8398 8.07373 38.8799C11.8159 42.0322 16.1255 43.5762 21.041 43.2803C24.0269 43.104 27.3516 42.6963 31.1016 39.4561C32.0469 39.936 33.0396 40.1279 34.686 40.272C35.9546 40.3921 37.1758 40.208 38.1211 40.0078C39.6021 39.688 39.4995 38.2881 38.9639 38.0322C34.623 35.9678 35.5762 36.8081 34.71 36.1279C36.9155 33.4639 40.2402 30.6958 41.54 21.728C41.6426 21.0161 41.5557 20.5679 41.54 19.9917C41.5322 19.6396 41.6108 19.5039 42.0049 19.4639C43.0923 19.3359 44.1479 19.0317 45.1167 18.4878C47.9292 16.9199 49.064 14.3438 49.3315 11.2559C49.3711 10.7837 49.3237 10.2959 48.8354 10.0479ZM24.3262 37.8398C20.1196 34.4639 18.0791 33.3521 17.2358 33.3999C16.4482 33.4482 16.5898 34.3682 16.7632 34.9678C16.9443 35.5601 17.1812 35.9683 17.5117 36.4878C17.7402 36.832 17.8979 37.3442 17.2832 37.728C15.9282 38.584 13.5728 37.4399 13.4624 37.3838C10.7207 35.7358 8.42822 33.5601 6.81348 30.584C5.25342 27.7197 4.34766 24.6479 4.19775 21.3677C4.1582 20.5757 4.38672 20.2959 5.15869 20.1519C6.17529 19.96 7.22314 19.9199 8.23926 20.0718C12.5327 20.7119 16.1885 22.6719 19.2529 25.7759C21.002 27.5439 22.3252 29.6558 23.6885 31.7202C25.1377 33.9121 26.6978 36 28.6831 37.7119C29.3843 38.312 29.9434 38.7681 30.479 39.104C28.8643 39.2881 26.1699 39.3281 24.3262 37.8398ZM26.3433 24.6001C26.3433 24.248 26.6191 23.9678 26.9658 23.9678C27.0444 23.9678 27.1152 23.9839 27.1782 24.0078C27.2651 24.04 27.3438 24.0879 27.4067 24.1602C27.5171 24.272 27.5801 24.4321 27.5801 24.6001C27.5801 24.9521 27.3042 25.2319 26.9575 25.2319C26.6108 25.2319 26.3433 24.9521 26.3433 24.6001ZM32.6064 27.8799C32.2046 28.0479 31.8027 28.1919 31.4165 28.208C30.8179 28.2397 30.1641 27.9922 29.8096 27.688C29.2583 27.2158 28.8643 26.9521 28.6987 26.1279C28.6279 25.7759 28.6675 25.2319 28.7305 24.9199C28.8721 24.248 28.7144 23.8159 28.2495 23.4238C27.8716 23.104 27.3911 23.0161 26.8633 23.0161C26.666 23.0161 26.4849 22.9277 26.3511 22.856C26.1304 22.7441 25.9492 22.4639 26.1226 22.1201C26.1777 22.0078 26.4458 21.7358 26.5088 21.688C27.2256 21.272 28.0527 21.4077 28.8169 21.7197C29.5259 22.0161 30.0615 22.5601 30.834 23.3281C31.6216 24.2559 31.7632 24.5117 32.2124 25.208C32.5669 25.752 32.8901 26.312 33.1104 26.9521C33.2446 27.3521 33.0713 27.6802 32.6064 27.8799Z";
+  var CX = 27.889625, CY = 24.952640;   // 鲸鱼中心（heartbeat 缩放轴心）
+
+  // ---- 状态默认配置（复刻 lib/index.js 的 DEFAULTS）----
+  var PRESETS = {
+    idle:    { effect: "static",    colors: ["#1a1a1a"],              speed: 1200 },
+    running: { effect: "static",    colors: ["#FACC15"],              speed: 1200 },
+    asking:  { effect: "blink",     colors: ["#E5484D", "#FACC15"],   speed: 400 },
+    done:    { effect: "static",    colors: ["#22A06B"],              speed: 1200 }
+  };
+  var DEF_SPEED = 1200, DEF_COLOR = "#1a1a1a";
+
+  // ---- 角标参数（可调，与计划中的常量对应）----
+  var badge = {
+    on: true,
+    zero: "hide",       // hide | show
+    corner: "tr",       // tr | tl | br | bl
+    bgMode: "auto",     // auto | white | custom
+    customBg: "#ffffff",
+    radius: 9,
+    fontSize: 13,
+    stroke: 1.5
+  };
+
+  // ---- 当前图标参数 ----
+  var state = "running";
+  var effect = "static";
+  var colors = PRESETS.running.colors.slice();
+  var speed = PRESETS.running.speed;
+
+  var raf = null, lastTs = 0, currentUri = "";
+  var BADGE_M = 0.6; // 角标与画布边缘的间距（角标贴住角落向外生长）
+
+  // ---- 提示通道：bigNum(满幅数字) | corner(数字角标) | title(标题数字) | dots(底部圆点) | bottomNum(底部数字胶囊) ----
+  var mode = "bigNum";
+  var titlePrefix = "dot";   // dot(●N) | bracket([N]) | plain(N·)
+  var BASE_TITLE = document.title;
+  var lastTitle = null;
+  function titleFor(n) {
+    if (n < 1) return BASE_TITLE;
+    var pre = titlePrefix === "dot" ? "●" + n : titlePrefix === "bracket" ? "[" + n + "]" : n + "·";
+    return pre + " " + BASE_TITLE;
+  }
+
+  // ---- pop 入场动画（借鉴 favico.js 的 pop：计数变化时数字缩放弹出）----
+  var popActive = false, popStart = 0, prevN = null, POP_MS = 380;
+  var markerPivot = { x: 25, y: 25 };   // 当前标记的缩放轴心（各通道绘制时更新）
+  function easeOutBack(t) {
+    var c1 = 1.70158, c3 = c1 + 1;
+    return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+  }
+  function popScale(now) {
+    if (!popActive) return 1;
+    var p = (now - popStart) / POP_MS;
+    if (p >= 1) { popActive = false; return 1; }
+    var k = easeOutBack(p);
+    return k < 0.2 ? 0.2 : k;   // 缩放底限 0.2：首帧不完全消失，弹出更顺
+  }
+  function wrapPop(svg, k, cx, cy) {
+    if (k === 1 || k === null || k === undefined) return svg;
+    return '<g transform="translate(' + cx + ' ' + cy + ') scale(' + k.toFixed(3) + ') translate(' + (-cx) + ' ' + (-cy) + ')">' + svg + '</g>';
+  }
+
+  // ---- 颜色工具（与注入脚本一致）----
+  function hexToRgb(h) {
+    h = String(h).replace('#', '');
+    if (h.length === 3) h = h.charAt(0)+h.charAt(0)+h.charAt(1)+h.charAt(1)+h.charAt(2)+h.charAt(2);
+    var n = parseInt(h, 16);
+    return [(n>>16)&255, (n>>8)&255, n&255];
+  }
+  function rgbToHex(r, g, b) {
+    return '#' + [r, g, b].map(function (v) {
+      v = Math.round(v); if (v < 0) v = 0; if (v > 255) v = 255;
+      return ('0' + v.toString(16)).slice(-2);
+    }).join('');
+  }
+  function mix(a, b, t) {
+    var ca = hexToRgb(a), cb = hexToRgb(b);
+    return rgbToHex(ca[0]+(cb[0]-ca[0])*t, ca[1]+(cb[1]-ca[1])*t, ca[2]+(cb[2]-ca[2])*t);
+  }
+  function hslToHex(h, s, l) {
+    h = ((h % 360) + 360) % 360; s /= 100; l /= 100;
+    var c = (1 - Math.abs(2*l - 1)) * s, x = c * (1 - Math.abs((h/60)%2 - 1)), m = l - c/2, r = 0, g = 0, b = 0;
+    if (h < 60) { r = c; g = x; } else if (h < 120) { r = x; g = c; } else if (h < 180) { g = c; b = x; }
+    else if (h < 240) { g = x; b = c; } else if (h < 300) { r = x; b = c; } else { r = c; b = x; }
+    return rgbToHex((r+m)*255, (g+m)*255, (b+m)*255);
+  }
+  function hueOf(hex) {
+    var c = hexToRgb(hex).map(function (v) { return v/255; });
+    var max = Math.max.apply(null, c), min = Math.min.apply(null, c), d = max - min, h = 0;
+    if (d) {
+      if (max === c[0]) h = ((c[1] - c[2]) / d) % 6;
+      else if (max === c[1]) h = (c[2] - c[0]) / d + 2;
+      else h = (c[0] - c[1]) / d + 4;
+      h *= 60; if (h < 0) h += 360;
+    }
+    return h;
+  }
+
+  // ---- 当前帧填充色（与注入脚本 frameColor 一致）----
+  function frameColor(cols, fx, t) {
+    var c0 = cols[0] || DEF_COLOR;
+    var c1 = cols[1] || mix(c0, "#000000", 0.35);
+    switch (fx) {
+      case "blink":    return ((t / speed) >> 0) % 2 === 0 ? c0 : c1;
+      case "breath": { var k = 0.5 + 0.5 * Math.sin((t / speed) * 2 * Math.PI); return mix(c0, c1, k); }
+      case "rainbow":  return hslToHex(hueOf(c0) + (t / speed) * 360, 70, 58);
+      default:         return c0;
+    }
+  }
+
+  // ---- 角标 SVG 片段（计划中的 badgeMarkup：几何 + 自动反色）----
+  function badgeMarkup(fill, n) {
+    if (!badge.on) return "";
+    if (n < 1 && badge.zero === "hide") return "";
+    var text = String(n > 99 ? "99+" : n);
+    var chars = text.length;
+    var fs = badge.fontSize - (chars > 1 ? (chars - 1) * 1.2 : 0); // 多位略缩字号
+    // 圆随文字自适应（保证数字不被裁切），且允许大于手动设置的半径
+    var r = Math.max(badge.radius, fs * chars * 0.52);
+    if (r > 23) r = 23;
+    var right = badge.corner === "tr" || badge.corner === "br";
+    var bottom = badge.corner === "br" || badge.corner === "bl";
+    // 贴角生长：圆心距边缘 = 半径 + 间距，天然不溢出 50×50 画布
+    var cx = right ? 50 - r - BADGE_M : r + BADGE_M;
+    var cy = bottom ? 50 - r - BADGE_M : r + BADGE_M;
+    // 底色
+    var bg = badge.bgMode === "auto" ? fill : (badge.bgMode === "white" ? "#ffffff" : badge.customBg);
+    var rgb = hexToRgb(bg);
+    var lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
+    var fg = lum > 0.6 ? "#111111" : "#FFFFFF";   // 按亮度自动反色
+    var textY = cy + fs * 0.32;
+    var stroke = badge.stroke > 0
+      ? ' stroke="#FFFFFF" stroke-width="' + badge.stroke.toFixed(2) + '"'
+      : '';
+    markerPivot = { x: cx, y: cy };
+    return '<g>' +
+      '<circle cx="' + cx.toFixed(2) + '" cy="' + cy.toFixed(2) + '" r="' + r.toFixed(2) + '" fill="' + bg + '"' + stroke + '/>' +
+      '<text x="' + cx.toFixed(2) + '" y="' + textY.toFixed(2) + '" text-anchor="middle"' +
+      ' font-family="system-ui, sans-serif" font-size="' + fs.toFixed(2) + '" font-weight="700" fill="' + fg + '">' + text + '</text>' +
+      '</g>';
+  }
+
+  // ---- 通道：满幅数字（Gmail 未读式：数字占满图标，16px / 固定标签页都清晰）----
+  function chipColors(fill) {
+    var bg = badge.bgMode === "auto" ? fill : (badge.bgMode === "white" ? "#ffffff" : badge.customBg);
+    var rgb = hexToRgb(bg);
+    var lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
+    return { bg: bg, fg: lum > 0.6 ? "#111111" : "#FFFFFF" };
+  }
+  function bigNumMarkup(fill, n) {
+    if (n < 1) return "";            // 空闲：不遮挡鲸鱼
+    var text = String(n > 99 ? "99+" : n);
+    var chars = text.length;
+    var fs = chars === 1 ? 26 : chars === 2 ? 20 : 15.5;   // 数字高度占图标的 31%-52%
+    var c = chipColors(fill);
+    markerPivot = { x: 25, y: 25 };
+    return '<g>' +
+      '<rect x="0" y="0" width="50" height="50" rx="11" fill="' + c.bg + '"/>' +
+      '<text x="25" y="' + (25 + fs * 0.34).toFixed(1) + '" text-anchor="middle" font-family="system-ui, sans-serif" font-size="' + fs + '" font-weight="800" fill="' + c.fg + '">' + text + '</text>' +
+      '</g>';
+  }
+
+  // ---- 通道：底部圆点（每 1 个活动 agent 一个白点，≤5 个数点即知，超出变胶囊数字）----
+  function dotRowMarkup(n) {
+    if (n < 1) return "";
+    var max = 5, r = 2.1, gap = 6.4;
+    var m = Math.min(n, max);
+    var startX = 25 - ((m - 1) * gap) / 2;
+    var y = 46.6;
+    var s = '<g>';
+    for (var i = 0; i < m; i++) {
+      s += '<circle cx="' + (startX + i * gap).toFixed(1) + '" cy="' + y.toFixed(1) + '" r="' + r + '" fill="#FFFFFF" stroke="#000" stroke-opacity="0.35"/>';
+    }
+    if (n > max) {
+      // 超过 5 个：变胶囊数字（与底部数字胶囊同落位 y=38.5 高 11，白色底）
+      var text = String(n > 99 ? "99+" : n);
+      var chars = text.length;
+      var fs = 9, tw = fs * 0.55 * chars, w = Math.max(11, tw + 6), h = 11, y = 38.5;
+      var x = 25 - w / 2;
+      s += '<rect x="' + x.toFixed(1) + '" y="' + y + '" width="' + w.toFixed(1) + '" height="' + h + '" rx="' + (h / 2).toFixed(1) + '" fill="#FFFFFF" stroke="#000" stroke-opacity="0.35"/>' +
+        '<text x="25" y="' + (y + h / 2 + fs * 0.3).toFixed(1) + '" text-anchor="middle" font-family="system-ui, sans-serif" font-size="' + fs + '" font-weight="700" fill="#111111">' + text + '</text>';
+    }
+    markerPivot = { x: 25, y: n > max ? 44 : 46.6 };
+    return s + '</g>';
+  }
+
+  // ---- 通道：底部数字胶囊（数字放在图标底部中央，横向空间比角落大）----
+  function bottomCapsuleMarkup(fill, n) {
+    if (n < 1) return "";
+    var text = String(n > 99 ? "99+" : n);
+    var chars = text.length;
+    var fs = 9;
+    var tw = fs * 0.55 * chars;
+    var w = Math.max(11, tw + 6), h = 11, y = 38.5;   // y 38.5..49.5，落在鲸鱼下方空带
+    var x = 25 - w / 2;
+    var bg = badge.bgMode === "auto" ? fill : (badge.bgMode === "white" ? "#ffffff" : badge.customBg);
+    var rgb = hexToRgb(bg);
+    var lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
+    var fg = lum > 0.6 ? "#111111" : "#FFFFFF";
+    markerPivot = { x: 25, y: 44 };
+    return '<g>' +
+      '<rect x="' + x.toFixed(1) + '" y="' + y + '" width="' + w.toFixed(1) + '" height="' + h + '" rx="' + (h / 2) + '" fill="' + bg + '" stroke="#FFFFFF" stroke-width="1.2"/>' +
+      '<text x="25" y="' + (y + h / 2 + fs * 0.3).toFixed(1) + '" text-anchor="middle" font-family="system-ui, sans-serif" font-size="' + fs + '" font-weight="700" fill="' + fg + '">' + text + '</text>' +
+      '</g>';
+  }
+
+  // ---- 整帧 SVG：鲸鱼（特效 transform 只包鲸鱼，角标在组外保持原坐标系）----
+  function svgFrame(fill, t) {
+    // bigNum 且活动数>0：整帧就是数字块，不画鲸鱼——pop 切换数字时不会透出后面的鲸鱼
+    var showWhale = !(mode === "bigNum" && count() > 0);
+    var inner = showWhale ? '<path id="p" d="' + PATH + '"/>' : "";
+    if (showWhale && (effect === "heartbeat" || effect === "bounce")) {
+      var gattr;
+      if (effect === "heartbeat") {
+        var tt = (t % speed) / speed, s = 1;
+        if (tt < 0.12) s = 1 + 0.16 * Math.sin(tt / 0.12 * Math.PI);
+        else if (tt < 0.25) s = 1 + 0.10 * Math.sin((tt - 0.12) / 0.13 * Math.PI);
+        gattr = 'transform="translate(' + CX + ' ' + CY + ') scale(' + s + ') translate(' + (-CX) + ' ' + (-CY) + ')"';
+      } else {
+        var dy = -Math.abs(Math.sin((t / speed) * 2 * Math.PI * 1.6)) * 6;
+        gattr = 'transform="translate(0 ' + dy.toFixed(2) + ')"';
+      }
+      inner = '<g ' + gattr + '>' + inner + '</g>';
+    }
+    // 按模式生成标记，计数变化时数字以 pop 缩放弹出（favico.js 式入场）
+    var mark = "", k = 1;
+    if (popActive) k = popScale(Date.now());
+    if (mode === "bigNum") {
+      mark = bigNumMarkup(fill, count());
+    } else if (mode === "corner") {
+      mark = badgeMarkup(fill, count());
+    } else if (mode === "dots") {
+      mark = dotRowMarkup(count());
+    } else if (mode === "bottomNum") {
+      mark = bottomCapsuleMarkup(fill, count());
+    }
+    if (mark !== "" && k !== 1) mark = wrapPop(mark, k, markerPivot.x, markerPivot.y);
+    inner += mark;
+    // mode === "title"：图标上不画任何标记，数量走 document.title（固定标签页无效）
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 50 50" fill="none">' +
+      '<style>#p{fill:' + fill + ';}</style>' + inner + '</svg>';
+  }
+
+  // ---- 输出：favicon link + 所有预览 + meta + 源 ----
+  function favLink() {
+    return document.querySelector("link[rel='icon']") || (function () {
+      var l = document.createElement("link");
+      l.rel = "icon";
+      document.head.appendChild(l);
+      return l;
+    })();
+  }
+  function toUri(svgText) { return "data:image/svg+xml," + encodeURIComponent(svgText); }
+  function setFrame(uri) {
+    currentUri = uri;
+    favLink().setAttribute("href", uri);
+    document.getElementById("bigImg").setAttribute("src", uri);
+    document.getElementById("tabFav").setAttribute("src", uri);
+    ["p16", "p32", "p64", "p128"].forEach(function (id) {
+      document.getElementById(id).setAttribute("src", uri);
+    });
+    var n = count();
+    // 标题通道：直接改写 document.title（同时同步模拟标签页的标题文字）
+    var tabTitle = mode === "title" ? titleFor(n) : BASE_TITLE;
+    if (tabTitle !== lastTitle) { lastTitle = tabTitle; document.title = tabTitle; }
+    document.getElementById("tabTitle").textContent = tabTitle;
+    var cornerNames = { tr: "右上", tl: "左上", br: "右下", bl: "左下" };
+    var modeNames = { bigNum: "满幅数字", corner: "数字角标(角落)", title: "标题数字", dots: "底部圆点", bottomNum: "底部数字胶囊" };
+    var badgeInfo = "";
+    if (mode === "corner") {
+      badgeInfo = ' · 角标 <b>' +
+        (badge.on && !(n < 1 && badge.zero === "hide") ? cornerNames[badge.corner] : "关闭") + '</b>';
+    }
+    document.getElementById("metaLine").innerHTML =
+      '通道 <b>' + modeNames[mode] + '</b> · 活动 <b>' + n + '</b> 个' + badgeInfo + ' · ' + state + ' · ' + effect;
+    document.getElementById("uriLen").textContent = uri.length + " 字符";
+    document.getElementById("srcOut").textContent = uri;
+  }
+
+  // ---- 引擎循环（与注入脚本 apply/rAF 一致：static 画一帧即停，动画持续）----
+  function stopLoop() { if (raf) { cancelAnimationFrame(raf); raf = null; } }
+  // tick：帧首检测计数变化并触发 pop；pop 播放期间即使 static 特效也持续重绘，播完即停。
+  // 检测放在绘制之前，保证 static 特效下 pop 动画不会因"只画一帧"而丢失。
+  function tick(now) {
+    var n = count();
+    if (prevN === null) prevN = n;
+    else if (n !== prevN) { popActive = true; popStart = Date.now(); prevN = n; }
+    if (lastTs === 0) lastTs = now;
+    var fill = frameColor(colors, effect, now - lastTs);
+    var uri = toUri(svgFrame(fill, now - lastTs));
+    try { setFrame(uri); } catch (e) {}
+    if (effect !== "static" || popActive) raf = requestAnimationFrame(tick);
+  }
+  function rAF() { raf = requestAnimationFrame(tick); }
+  function apply() {
+    stopLoop();
+    lastTs = 0;
+    // 状态/特效按钮高亮
+    Array.prototype.forEach.call(document.querySelectorAll("#stateRow .seg-btn"), function (b) {
+      b.classList.toggle("active", b.getAttribute("data-state") === state);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll("#fxRow .seg-btn"), function (b) {
+      b.classList.toggle("active", b.getAttribute("data-effect") === effect);
+    });
+    document.getElementById("stateBadge").textContent = state;
+    rAF();
+  }
+
+  function count() {
+    var v = parseInt(document.getElementById("countNum").value, 10);
+    if (isNaN(v) || v < 0) v = 0;
+    if (v > 120) v = 120;
+    return v;
+  }
+
+  // ---- UI 装配 ----
+  function $id(id) { return document.getElementById(id); }
+
+  // favico 风格预设：右下大红圆徽标（借鉴 favico.js 默认观感 bgColor #d00 / 白字粗体 / 无描边）
+  $id("favicoPresetBtn").addEventListener("click", function () {
+    mode = "corner";
+    badge.on = true;
+    $id("badgeOn").checked = true;
+    badge.corner = "br";
+    badge.radius = 14;
+    badge.fontSize = 14;
+    badge.stroke = 0;
+    badge.bgMode = "custom";
+    badge.customBg = "#dd0000";
+    // 同步 UI 控件状态
+    Array.prototype.forEach.call(document.querySelectorAll("#modeRow .seg-btn"), function (x) {
+      x.classList.toggle("active", x.getAttribute("data-mode") === mode);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-corner]"), function (x) {
+      x.classList.toggle("active", x.getAttribute("data-corner") === badge.corner);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll("#bgRow .seg-btn"), function (x) {
+      x.classList.toggle("active", x.getAttribute("data-bgmode") === badge.bgMode);
+    });
+    $id("customBgWrap").style.display = "inline-flex";
+    $id("customBg").value = badge.customBg;
+    $id("radiusRange").value = badge.radius;
+    $id("radiusVal").textContent = badge.radius.toFixed(1);
+    $id("fontRange").value = badge.fontSize;
+    $id("fontVal").textContent = badge.fontSize.toFixed(1);
+    $id("strokeRange").value = badge.stroke;
+    $id("strokeVal").textContent = String(badge.stroke);
+    document.getElementById("modeHint").textContent = "favico 风格：右下大红圆徽标（r=14、字号 14、粗体白字、无描边），数字高≈图标 56%——favico.js 经典观感。";
+    apply();
+  });
+
+  // 提示通道切换
+  var MODE_HINTS = {
+    bigNum: "满幅数字（Gmail 未读式）：忙时整帧为状态色数字块（不画鲸鱼，pop 切换数字不穿帮），字号≈图标的 31%-52%，16px 与固定标签页都可读；空闲回到鲸鱼。",
+    corner: "角落数字角标：16px 光栅下数字过小、识别困难——保留作为对比基准。",
+    title: "标题数字：favicon 保留状态色，标题显示准确数量——但固定（pin）标签页不显示标题，仅作补充通道。",
+    dots: "底部圆点：每 1 个活动 agent 一个白点；≤5 一眼数清，超过自动变成胶囊数字。",
+    bottomNum: "底部数字胶囊：数字放在图标底部中央空带（横向空间比角落大），随位数自动加宽，字号更大。"
+  };
+  Array.prototype.forEach.call(document.querySelectorAll("#modeRow .seg-btn"), function (b) {
+    b.addEventListener("click", function () {
+      mode = b.getAttribute("data-mode");
+      Array.prototype.forEach.call(document.querySelectorAll("#modeRow .seg-btn"), function (x) {
+        x.classList.toggle("active", x === b);
+      });
+      document.getElementById("modeHint").textContent = MODE_HINTS[mode];
+      apply();
+    });
+  });
+  // 标题前缀样式
+  Array.prototype.forEach.call(document.querySelectorAll("#prefixRow .seg-btn"), function (b) {
+    b.addEventListener("click", function () {
+      titlePrefix = b.getAttribute("data-prefix");
+      Array.prototype.forEach.call(document.querySelectorAll("#prefixRow .seg-btn"), function (x) {
+        x.classList.toggle("active", x === b);
+      });
+      apply();
+    });
+  });
+
+  // 活动数：slider ⇄ number 双向同步
+  $id("countRange").addEventListener("input", function () {
+    $id("countNum").value = this.value;
+    apply();
+  });
+  $id("countNum").addEventListener("input", function () {
+    var v = parseInt(this.value, 10);
+    if (isNaN(v) || v < 0) v = 0;
+    if (v > 120) v = 120;
+    this.value = v;
+    $id("countRange").value = v;
+    apply();
+  });
+
+  // 角标开关
+  $id("badgeOn").addEventListener("change", function () { badge.on = this.checked; apply(); });
+  // 0 值行为
+  Array.prototype.forEach.call(document.querySelectorAll("#zeroRow .seg-btn"), function (b) {
+    b.addEventListener("click", function () {
+      badge.zero = b.getAttribute("data-zero");
+      Array.prototype.forEach.call(document.querySelectorAll("#zeroRow .seg-btn"), function (x) {
+        x.classList.toggle("active", x === b);
+      });
+      apply();
+    });
+  });
+  // 角标位置
+  Array.prototype.forEach.call(document.querySelectorAll("[data-corner]"), function (b) {
+    b.addEventListener("click", function () {
+      badge.corner = b.getAttribute("data-corner");
+      Array.prototype.forEach.call(document.querySelectorAll("[data-corner]"), function (x) {
+        x.classList.toggle("active", x === b);
+      });
+      apply();
+    });
+  });
+  // 底色模式
+  Array.prototype.forEach.call(document.querySelectorAll("#bgRow .seg-btn"), function (b) {
+    b.addEventListener("click", function () {
+      badge.bgMode = b.getAttribute("data-bgmode");
+      Array.prototype.forEach.call(document.querySelectorAll("#bgRow .seg-btn"), function (x) {
+        x.classList.toggle("active", x === b);
+      });
+      $id("customBgWrap").style.display = badge.bgMode === "custom" ? "inline-flex" : "none";
+      apply();
+    });
+  });
+  $id("customBg").addEventListener("input", function () { badge.customBg = this.value; apply(); });
+
+  // 圆半径 / 字号 / 描边
+  $id("radiusRange").addEventListener("input", function () {
+    badge.radius = parseFloat(this.value);
+    $id("radiusVal").textContent = badge.radius.toFixed(1);
+    apply();
+  });
+  $id("fontRange").addEventListener("input", function () {
+    badge.fontSize = parseFloat(this.value);
+    $id("fontVal").textContent = badge.fontSize.toFixed(1);
+    apply();
+  });
+  $id("strokeRange").addEventListener("input", function () {
+    badge.stroke = parseFloat(this.value);
+    $id("strokeVal").textContent = badge.stroke.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+    apply();
+  });
+
+  // 状态：切换时载入预设（特效/颜色/周期）
+  Array.prototype.forEach.call(document.querySelectorAll("#stateRow .seg-btn"), function (b) {
+    b.addEventListener("click", function () {
+      state = b.getAttribute("data-state");
+      var p = PRESETS[state];
+      effect = p.effect;
+      colors = p.colors.slice();
+      speed = p.speed;
+      $id("c0Picker").value = colors[0] || DEF_COLOR;
+      $id("c0Text").value = colors[0] || "";
+      $id("c1Picker").value = colors[1] || "#E5484D";
+      $id("c1Text").value = colors[1] || "";
+      $id("speedNum").value = speed;
+      apply();
+    });
+  });
+  // 特效
+  Array.prototype.forEach.call(document.querySelectorAll("#fxRow .seg-btn"), function (b) {
+    b.addEventListener("click", function () {
+      effect = b.getAttribute("data-effect");
+      apply();
+    });
+  });
+
+  // 颜色输入（picker ⇄ text 双向，映射 colors[0]/colors[1]）
+  function normalize(v) {
+    v = String(v).trim();
+    return (/^#[0-9a-f]{3}$/i.test(v) || /^#[0-9a-f]{6}$/i.test(v)) ? v : null;
+  }
+  function bindColor(pickerId, textId, index) {
+    var picker = $id(pickerId), text = $id(textId);
+    function syncFrom(src, dst) {
+      var v = normalize(src.value);
+      if (!v) return;
+      dst.value = v;
+      colors[index] = v;
+      apply();
+    }
+    picker.addEventListener("input", function () { syncFrom(picker, text); });
+    text.addEventListener("input", function () { syncFrom(text, picker); });
+  }
+  bindColor("c0Picker", "c0Text", 0);
+  bindColor("c1Picker", "c1Text", 1);
+
+  // 周期
+  $id("speedNum").addEventListener("input", function () {
+    var v = parseInt(this.value, 10);
+    if (isNaN(v) || v < 40) v = 40;
+    if (v > 10000) v = 10000;
+    this.value = v;
+    speed = v;
+    apply();
+  });
+
+  // 复制 data URI
+  $id("copyBtn").addEventListener("click", function () {
+    var btn = this;
+    function done() {
+      btn.classList.add("ok");
+      btn.textContent = "已复制 ✓";
+      setTimeout(function () {
+        btn.classList.remove("ok");
+        btn.textContent = "复制";
+      }, 1200);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(currentUri).then(done, function () { fallbackCopy(done); });
+    } else fallbackCopy(done);
+  });
+  function fallbackCopy(done) {
+    var ta = document.createElement("textarea");
+    ta.value = currentUri;
+    ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); done(); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+
+  window.addEventListener("beforeunload", function () {
+    stopLoop();
+    document.title = BASE_TITLE;
+  });
+
+  // 初始载入 running 预设
+  $id("c0Picker").value = colors[0];
+  $id("c0Text").value = colors[0];
+  $id("customBgWrap").style.display = "none";
+  apply();
+})();
+</script>
+</body>
+</html>
