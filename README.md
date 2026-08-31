@@ -45,6 +45,33 @@ The four default states, exactly as they appear in the browser tab (the `asking`
 | `asking` | `#E5484D` ⇄ `#FACC15` — red/yellow | `blink` (400 ms) |
 | `done` | `#22A06B` — green | `static`, stays `doneHoldMs`, then back to `idle` |
 
+### Multi-agent, visualized
+
+With several agents running at once, the favicon itself becomes the counter:
+while **more than one** agent is active (non-idle: `asking` / `running` / `done`,
+including the short `done` hold), the whale is replaced by a full-frame count
+block showing the live `active` count, filled with the aggregate state's color
+and driven by the same effect — so it keeps blinking / breathing / cycling
+exactly like the whale would. With 0–1 active agents it comes right back to
+the whale.
+
+<p align="center">
+  <img src="assets/multi-agent-count.svg" width="576" alt="active=0 dark whale, active=1 yellow whale, active=2/3 yellow count blocks, active=3 asking red block (blinks), active=100 shows 99+">
+</p>
+
+| `active` (non-idle agents) | Favicon |
+| --- | --- |
+| `0` | dark `idle` whale |
+| `1` | that state's whale (`running` yellow, …) |
+| `2`–`99` | full-frame count block; digit height ≈31–52% of the icon (1 digit = 26, 2 = 20, 3+ = 15.5), readable at 16px and in pinned tabs |
+| `100`+ | `99+` |
+
+State priority is unchanged, so `asking` still takes over with its red ⇄ yellow
+400 ms blink (the count block blinks), `done` flashes its color for
+`doneHoldMs`, and the count refreshes live through the status poll (~1 s).
+Same visual language as the *满幅数字* channel of
+[`demo/badge.html`](./demo/badge.html).
+
 ## ✨ All effects, animated
 
 Every preview below is the real whale path, animated the same way the plugin renders it (the previews are self-contained animated SVGs — they play right in your browser):

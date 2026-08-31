@@ -45,6 +45,28 @@
 | `asking` 提问 | `#E5484D` ⇄ `#FACC15`——红/黄 | `blink`（400ms） |
 | `done` 完成 | `#22A06B`——绿色 | `static`，保持 `doneHoldMs` 后回到 `idle` |
 
+### 多 agent 可视化
+
+当多个 agent 同时运行时，favicon 本身就是计数器：只要活动 agent **超过一个**
+（非待机：`asking` / `running` / `done`，含短暂的 `done` 保持期），鲸鱼就换成
+占满整帧的数字块——实时显示 `active` 计数，底色取聚合状态色、特效与鲸鱼完全
+同源（照常闪烁 / 呼吸 / 彩虹）；活动数回到 0–1 时恢复鲸鱼。
+
+<p align="center">
+  <img src="assets/multi-agent-count.svg" width="576" alt="active=0 深色鲸鱼、active=1 黄色鲸鱼、active=2/3 黄色数字块、active=3 asking 红色块（闪烁）、active=100 显示 99+">
+</p>
+
+| `active`（非待机 agent 数） | favicon |
+| --- | --- |
+| `0` | 深色 `idle` 鲸鱼 |
+| `1` | 对应状态的鲸鱼（`running` 黄色，…） |
+| `2`–`99` | 占满整帧的数字块，数字高度约占图标的 31%–52%（1 位 26、2 位 20、3+ 位 15.5）——16px 与固定标签页都可读 |
+| `100`+ | `99+` |
+
+状态优先级不变：`asking` 仍以红 ⇄ 黄 400ms 闪烁接管（闪烁的是数字块），
+`done` 按其颜色驻留 `doneHoldMs`，计数随状态轮询实时刷新（约 1 秒）。
+视觉与 [`demo/badge.html`](./demo/badge.html) 的「满幅数字」通道一致。
+
 ## ✨ 全部特效，动画演示
 
 下面每个预览都是真实的鲸鱼路径，按插件实际渲染方式做动画（预览是自包含的动画 SVG，在浏览器里直接播放）：
