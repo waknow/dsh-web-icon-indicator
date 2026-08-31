@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/waknow/dsh-web-icon-indicator/compare/v0.2.3...v0.3.0) (2026-08-31)
+
+### Added
+
+* show full-frame active count while multiple agents run ([d287620](https://github.com/waknow/dsh-web-icon-indicator/commit/d287620a6d66a6aa0b4ce8580adad77908ecdaab))
+
+### Changed
+
+* add npm version/downloads/license badges to both READMEs ([e3dd298](https://github.com/waknow/dsh-web-icon-indicator/commit/e3dd29806413ea5f33dd36077caa340c24e8c70c))
+* document automated release flow with commit-and-tag-version ([1754216](https://github.com/waknow/dsh-web-icon-indicator/commit/1754216c32003a722f619935ebf0ab1a402887f1))
+
 ## [0.2.3](https://github.com/waknow/dsh-web-icon-indicator/compare/v0.2.2...v0.2.3) (2026-08-24)
 
 ### Changed
