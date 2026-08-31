@@ -67,6 +67,7 @@
     "browser-tab"
   ],
   "scripts": {
+    "test": "node test/verify.js",
     "release": "commit-and-tag-version",
     "release:patch": "commit-and-tag-version --release-as patch",
     "release:minor": "commit-and-tag-version --release-as minor",

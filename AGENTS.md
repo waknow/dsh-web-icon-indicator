@@ -4,12 +4,12 @@ Agent operating instructions for `dsh-web-icon-indicator` — a DSH (DeepSeek Ha
 
 ## Common commands
 
-**There is no build step, no test suite, and no linter.** Do not invent or run them.
+**There is no build step and no linter.** Do not invent or run them. Automated checks: `npm test` (= `node test/verify.js`, see *Testing*).
 
 ```bash
 # Manual verification loop (the only way to validate changes):
 dsh plugin --profile web add <this-repo-path>            # install into web profile
-curl http://localhost:3080/dsh-web-icon-status.json      # aggregated state JSON: {"state","since","states"}
+curl http://localhost:3080/dsh-web-icon-status.json      # aggregated state JSON: {"state","since","active","states"}
 ```
 
 ## Upstream DSH source
@@ -120,12 +120,24 @@ The rules below pin its requirements to this repo; follow them on any settings-c
 
 ## Testing
 
-No automated tests. Verify manually:
+Automated verification lives in `test/verify.js` — a zero-dependency, zero-build
+plain-Node script (`npm test` or `node test/verify.js`). It runs the REAL code:
+loader hooks (`test/loader-hooks.mjs` + `test/stubs/`) stub the two
+`@deepseek-ai/*` peer imports so the host plugin's `apply()` can be driven with a
+fake Cordis ctx (state machine, `active` aggregation, approval/asking/done-hold,
+route shapes), and the injected browser script is extracted and executed in a
+`node:vm` with DOM/fetch/rAF stubs (whale vs full-frame count block, render-key
+transitions, effect fills, settings sync, poll-failure restore, legacy-host
+compat). Keep it passing when touching `lib/index.js` — it extracts the source,
+so it tests exactly what ships.
+
+Additionally verify manually:
 
 1. Open the DSH Web GUI tab and watch the favicon.
 2. Trigger an `ask_user_question` tool call → favicon must blink yellow/red for at least `askingHoldMs`.
 3. End a turn → `done` icon for `doneHoldMs`, then back to `idle`.
-4. `curl` the status endpoint to confirm the aggregate `{ state, since, states }` JSON.
+4. `curl` the status endpoint to confirm the aggregate `{ state, since, active, states }` JSON.
+5. With ≥2 agents active at once, the favicon must show the full-frame count block; back to the whale at ≤1.
 
 ## Constraints (do not break)
 
@@ -142,7 +154,7 @@ No automated tests. Verify manually:
 
 ## Do NOT
 
-- Add a build system, test framework, linter, or NEW dependencies without an explicit request. This repo is deliberately zero-build, zero-test; the only runtime deps are `@deepseek-ai/schemastery` + `@deepseek-ai/dsh-settings` (settings registration, added on request), declared as `peerDependencies` (the host harness provides them). The single `devDependency` is `commit-and-tag-version` (release tooling only — added on request; never promote it to a runtime dep).
+- Add a build system, test framework, linter, or NEW dependencies without an explicit request. This repo is deliberately zero-build (the only automated check is the zero-dependency `test/verify.js`, added on request); the only runtime deps are `@deepseek-ai/schemastery` + `@deepseek-ai/dsh-settings` (settings registration, added on request), declared as `peerDependencies` (the host harness provides them). The single `devDependency` is `commit-and-tag-version` (release tooling only — added on request; never promote it to a runtime dep).
 - Rename `base.svg` or change the icon route regex `^base\.svg$` without updating the state machine, browser script, types, and both READMEs together.
 - Break the plugin contract `{ name, inject, config, apply(ctx) }` (+ `SETTINGS_NAMESPACE` / `CONFIG_SCHEMA`) or the `dsh.bundle.patch` → `cordis.patch.yml` wiring.
 - Let `agent/turn-stopping` override the `asking` pin while it is active.
