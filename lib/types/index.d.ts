@@ -78,6 +78,14 @@ export interface DshWebIconIndicatorAggregate {
   /** Epoch millis when that aggregate state was first entered. */
   since: number;
   /**
+   * Number of non-idle agents (asking / running / done). While it is > 1 the
+   * favicon shows this count as a full-frame number block (in the aggregate
+   * state's color/effect) instead of the whale; with 0–1 active agents the
+   * whale is drawn. Echoed by the status endpoint. Added in 0.3.x; older
+   * browser bundles ignore it.
+   */
+  active: number;
+  /**
    * Current per-state visual config, echoed by the status endpoint so the
    * injected browser script can apply a settings save within ~1 s (no tab
    * reload). Added in 0.2.x; older browser bundles ignore it.

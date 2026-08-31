@@ -17,6 +17,7 @@
 - **完全可配置、即时生效** —— 每个状态的颜色、特效、周期，以及提问 / 完成驻留时长，改动约 1 秒内同步到已打开的标签页——无需刷新、无需重启。
 - **内置配置 UI，无需手写 YAML** —— DSH 设置页里的 *标签页图标指示器* 卡片可编辑整套配置，带实时色块预览，保存后自动写入 `settings.yaml`（路径见下）。
 - **后台标签页与重启抗性** —— 隐藏标签页中 `requestAnimationFrame` 被暂停时，动画态会按墙钟时间补帧；状态轮询还能扛住 host 重启，图标自动恢复。
+- **多 agent 一目了然** —— 当同时有**超过一个**活动 agent（非待机：`asking` / `running` / `done`）时，favicon 从鲸鱼切换为**占满整帧的数字块**，实时显示活动数（上限 `99+`），颜色与动画和该状态下鲸鱼完全一致；活动数回到 0–1 时恢复鲸鱼。（视觉与 [`demo/badge.html`](./demo/badge.html) 的「满幅数字」通道一致。）
 
 ### 🛠 配置界面——怎么找到它
 
@@ -148,7 +149,7 @@ config:
 ## 实现原理
 
 - Host 插件 + 一个小型浏览器半区：在现有 `webServer` 上注册路由——状态 JSON 端点、静态 `/dsh-web-icon-indicator/base.svg`（鲸鱼模板），以及一个 `tapIndex` 向每个 `index.html` 注入小段浏览器脚本。整套配置已注册进 DSH settings 服务（`web-icon-indicator` 命名空间）用于校验、持久化与设置页卡片（见上）。
-- 状态按 `agents.list()` 聚合，优先级 `asking > running > done > idle`。每次请求都会执行一次 `reconcile()` 检测 running → idle 的转换，因为 `agent/status` 的 idle 事件在回合结束时并不保证送达。
+- 状态按 `agents.list()` 聚合，优先级 `asking > running > done > idle`。每次请求都会执行一次 `reconcile()` 检测 running → idle 的转换，因为 `agent/status` 的 idle 事件在回合结束时并不保证送达。状态端点还会上报 `active`——非待机 agent 数——当该数 **> 1** 时，注入脚本改为渲染占满整帧的数字块（[`demo/badge.html`](./demo/badge.html) 的「满幅数字」通道：圆角色块，填充色与鲸鱼同源的逐帧状态色/特效，白色粗体数字约占图标高度 31%–52%，上限 `99+`），而不是鲸鱼，这样即使在 16px 的固定标签页里也能一眼看出同时有几个 agent 在忙。
 - `ask_user_question` 工具调用（通过 `tools/pre-execute` / `tools/result`）把会话置为 `asking`，带可配置的最小保持时长，即使你立刻回答，图标也会保持可见。
 - 权限 / **沙箱拦截**等待同样会显示为 `asking`：当 agent 命中沙箱拒绝并请求提权（`sandbox_permissions` + `justification`），或其他工具需要征得同意时，审批服务会先写入一条 `approval/asked` 会话事件并阻塞 agent，直到你做出决定。插件监听 `session/event`（并以实时会话日志的权威折叠作为兜底）在整个等待期间将会话置为 `asking` 状态，收到 `approval/decided` 后清除。
 - 浏览器脚本每秒轮询 `/dsh-web-icon-status.json`，首次获取 `base.svg`，然后每个 `requestAnimationFrame` 周期把 favicon 重建为 `data:image/svg+xml,…` URI——把 `__COLOR__` 占位符替换为状态配置的颜色，并应用该状态配置的特效。状态响应还会携带当前的每状态视觉配置，因此设置保存后约 1 秒内（下一个轮询 tick）即同步到已打开的标签页，无需刷新。浏览器不会播放 SVG favicon 的 CSS 动画，所以一切动画都由 JS 驱动。由于浏览器在**隐藏（后台）标签页会暂停 `requestAnimationFrame`**，轮询还会为动画态补绘一帧按墙钟时间计算的画面——后台标签页保持粗粒度动画（约每 1 秒）而不会冻结，切回前台后恢复满速动画。轮询还能**扛住 host 重启**：瞬时请求失败时先还原原始图标，并在下一个 tick 重试（SPA 原地重连，无需手动刷新图标即可恢复）。

@@ -191,7 +191,7 @@
         <button class="seg-btn" data-mode="corner">数字角标（对比）</button>
         <button class="seg-btn" data-mode="title">标题数字（pin 无效）</button>
       </div>
-      <p class="tip" id="modeHint">满幅数字（Gmail 未读式）：忙时整帧为状态色数字块（不画鲸鱼，pop 切换数字不穿帮），数字约占图标高度的 31%-52%，16px 与固定标签页都可读；空闲回到鲸鱼。本 demo 的浏览器标签 favicon 会实时演示。</p>
+      <p class="tip" id="modeHint">满幅数字（Gmail 未读式）：≥2 个活动 agent 时整帧为状态色数字块（不画鲸鱼，pop 切换数字不穿帮），数字约占图标高度的 31%-52%，16px 与固定标签页都可读；0–1 个时回到鲸鱼（门槛与插件 BIG_NUM_MIN=2 一致）。本 demo 的浏览器标签 favicon 会实时演示。</p>
       <div class="ctl" style="margin-top:12px">
         <label>标题前缀样式（仅"标题数字"通道生效；固定标签页不显示标题）</label>
         <div class="seg-row" id="prefixRow">
@@ -479,7 +479,7 @@
     return { bg: bg, fg: lum > 0.6 ? "#111111" : "#FFFFFF" };
   }
   function bigNumMarkup(fill, n) {
-    if (n < 1) return "";            // 空闲：不遮挡鲸鱼
+    if (n < 2) return "";            // 仅 0–1 个活动 agent：不遮挡鲸鱼（门槛与插件 BIG_NUM_MIN=2 对齐）
     var text = String(n > 99 ? "99+" : n);
     var chars = text.length;
     var fs = chars === 1 ? 26 : chars === 2 ? 20 : 15.5;   // 数字高度占图标的 31%-52%
@@ -537,8 +537,8 @@
 
   // ---- 整帧 SVG：鲸鱼（特效 transform 只包鲸鱼，角标在组外保持原坐标系）----
   function svgFrame(fill, t) {
-    // bigNum 且活动数>0：整帧就是数字块，不画鲸鱼——pop 切换数字时不会透出后面的鲸鱼
-    var showWhale = !(mode === "bigNum" && count() > 0);
+    // bigNum 且活动数>=2：整帧就是数字块，不画鲸鱼——pop 切换数字时不会透出后面的鲸鱼
+    var showWhale = !(mode === "bigNum" && count() >= 2);
     var inner = showWhale ? '<path id="p" d="' + PATH + '"/>' : "";
     if (showWhale && (effect === "heartbeat" || effect === "bounce")) {
       var gattr;
@@ -682,7 +682,7 @@
 
   // 提示通道切换
   var MODE_HINTS = {
-    bigNum: "满幅数字（Gmail 未读式）：忙时整帧为状态色数字块（不画鲸鱼，pop 切换数字不穿帮），字号≈图标的 31%-52%，16px 与固定标签页都可读；空闲回到鲸鱼。",
+    bigNum: "满幅数字（Gmail 未读式）：≥2 个活动 agent 时整帧为状态色数字块（不画鲸鱼，pop 切换数字不穿帮），字号≈图标的 31%-52%，16px 与固定标签页都可读；0–1 个时回到鲸鱼。",
     corner: "角落数字角标：16px 光栅下数字过小、识别困难——保留作为对比基准。",
     title: "标题数字：favicon 保留状态色，标题显示准确数量——但固定（pin）标签页不显示标题，仅作补充通道。",
     dots: "底部圆点：每 1 个活动 agent 一个白点；≤5 一眼数清，超过自动变成胶囊数字。",
