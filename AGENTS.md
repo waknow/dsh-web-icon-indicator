@@ -115,8 +115,11 @@ The rules below pin its requirements to this repo; follow them on any settings-c
    <https://docs.npmjs.com/trusted-publishers>; requires 2FA and a public
    package). The workflow verifies the tag matches `package.json` and fails
    fast otherwise.
-4. `gh release create v<version> ...` for the GitHub Releases page (optional but
-   recommended; `CHANGELOG.md` ships inside the npm tarball via `files`).
+4. The same workflow also creates the GitHub Release page automatically after a
+   successful publish (`softprops/action-gh-release` with
+   `generate_release_notes: true`, gated on `contents: write`). No manual
+   `gh release create` is needed; `CHANGELOG.md` ships inside the npm tarball
+   via `files`.
 
 ## Testing
 
