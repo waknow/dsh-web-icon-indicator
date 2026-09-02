@@ -405,22 +405,31 @@ const { default: plugin } = await import(new URL("../lib/index.js", import.meta.
   eq("H20 turn-stopping under pin -> stays asking",
     { state: agg.state, active: agg.active }, { state: "asking", active: 1 });
 
-  // H21 lost tools/result: re-arm capped, then force-released to live status
+  // H21 lost tools/result: re-arms while the agent stays running (the user may
+  // still be deciding), force-releases only once the agent leaves `running`.
   emit(h2.onHandlers, "agent/disposed", { agent: { id: "A" } });
   h2.setAgents([{ id: "B", status: "running" }]);
   emit(h2.onHandlers, "tools/pre-execute", { name: "ask_user_question", agent: { id: "B" } }, () => {});
   agg = aggregate2();
   eq("H21a ask pinned", { state: agg.state, active: agg.active }, { state: "asking", active: 1 });
-  for (let i = 1; i <= 2; i++) {
-    h2.timers[h2.timers.length - 1].cb(); // re-arm (no result yet)
+  for (let i = 1; i <= 5; i++) {
+    h2.timers[h2.timers.length - 1].cb(); // re-arm (no result yet, still running)
     agg = aggregate2();
-    eq("H21b re-arm #" + i + " (no result) -> still asking",
+    eq("H21b re-arm #" + i + " (no result, still running) -> still asking",
       { state: agg.state, active: agg.active }, { state: "asking", active: 1 });
   }
-  h2.timers[h2.timers.length - 1].cb(); // cap hit -> force release
+  // The turn ended while the result never arrived: the agent left `running`,
+  // so the pin must force-release instead of re-arming forever. The release is
+  // not a silent switch to idle — the running→idle transition is the standard
+  // turn-end path, so reconcile arms the normal done hold first, then idle.
+  h2.setAgents([{ id: "B", status: "idle" }]);
+  h2.timers[h2.timers.length - 1].cb(); // hold expired, agent no longer running
   agg = aggregate2();
-  eq("H21c re-arm cap -> live running restored",
-    { state: agg.state, active: agg.active }, { state: "running", active: 1 });
+  eq("H21c force-release after agent leaves running -> done hold",
+    { state: agg.state, active: agg.active }, { state: "done", active: 1 });
+  liveTimers().at(-1).cb(); // done hold expires
+  agg = aggregate2();
+  eq("H21d done hold expiry -> idle", { state: agg.state, active: agg.active }, { state: "idle", active: 0 });
 
   // H22 done->running->done round-trip keeps a SINGLE live hold
   h2.setAgents([{ id: "C", status: "running" }]);
