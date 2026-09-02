@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1](https://github.com/waknow/dsh-web-icon-indicator/compare/v0.3.0...v0.3.1) (2026-09-02)
+
+### Fixed
+
+* keep asking icon alive while agent is still running ([f9f4a08](https://github.com/waknow/dsh-web-icon-indicator/commit/f9f4a08c452549f43d379c4f7ddf8525f8674a56))
+
+### Changed
+
+* add multi-agent count visualization to READMEs ([4326456](https://github.com/waknow/dsh-web-icon-indicator/commit/4326456d60f4f90bab16a3424f91b9550e25da8a))
 ## [0.3.0](https://github.com/waknow/dsh-web-icon-indicator/compare/v0.2.3...v0.3.0) (2026-08-31)
 
 ### Added
