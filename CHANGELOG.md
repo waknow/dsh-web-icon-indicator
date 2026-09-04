@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/waknow/dsh-web-icon-indicator/compare/v0.3.1...v0.4.0) (2026-09-04)
+
+### Added
+
+* support DSH 0.1.2 settings service and configuration card ([de3019e](https://github.com/waknow/dsh-web-icon-indicator/commit/de3019e347fdbd3a512604a8377adc7523305730))
+
+### Changed
+
+* auto-create GitHub Release after successful npm publish ([02d98e3](https://github.com/waknow/dsh-web-icon-indicator/commit/02d98e3db9f83013a3e7667c6a0848efecb8ef37))
+* note DSH 0.1.2 support and add a version-support banner ([cd42d2c](https://github.com/waknow/dsh-web-icon-indicator/commit/cd42d2c5b5650800e3620c5806b1b4ac2b25c84f))
 ## [0.3.1](https://github.com/waknow/dsh-web-icon-indicator/compare/v0.3.0...v0.3.1) (2026-09-02)
 
 ### Fixed
