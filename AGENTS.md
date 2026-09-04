@@ -27,7 +27,8 @@ The DSH platform this plugin runs on lives at **https://github.com/deepseek-ai/d
 | `icons/base.svg` | The single whale template with a `__COLOR__` placeholder; recolored/animated in the browser | The filename is locked by a route regex — treat as immutable |
 | `cordis.patch.yml` | Install patch that inserts the plugin row into the profile composition | Referenced by `package.json` → `dsh.bundle.patch` |
 | `README.md` / `README.zh.md` | User docs (EN / zh) | Update both on any behavior/config/icon change |
-| `package.json` | Metadata, `exports` (incl. `./client`), `dsh.client` declaration, `engines.dsh` (declared DSH host floor — see *Declare/change the DSH host requirement*), `peerDependencies` (`@deepseek-ai/schemastery`), `files` allowlist, `scripts` (`release*` → `commit-and-tag-version`), `devDependencies` (`commit-and-tag-version`) | Release scripts — see *Release* |
+| `screenshots.json` | Marketplace storefront screenshots (1–8 image paths, relative to the file, in-repo only) | Read by the awesome-dsh-plugin nightly build & dsh-market detail view; see *Declare or change marketplace screenshots* |
+| `package.json` | Metadata, `exports` (incl. `./client`), `dsh.client` declaration, `engines.dsh` (declared DSH host floor — see *Declare/change the DSH host requirement*), `peerDependencies` (`@deepseek-ai/schemastery`), `files` allowlist (incl. `screenshots.json`), `scripts` (`release*` → `commit-and-tag-version`), `devDependencies` (`commit-and-tag-version`) | Release scripts — see *Release* |
 | `.github/workflows/publish.yml` | CI: publishes to npm on `v*` tags via **OIDC trusted publishing** (no token secret; `npm ci` + optional test/build, then `npm publish`) | Keeps the release flow hands-off — see *Release* |
 
 ## Code style & conventions
@@ -124,6 +125,26 @@ lockstep `@deepseek-ai/dsh*` peer, the card shows "未声明宿主要求".
   update without a release.
 - This field is metadata-only — it does not change plugin behavior. It only
   declares compatibility so the marketplace can label and filter it.
+
+### Declare or change marketplace screenshots (`screenshots.json`)
+`./screenshots.json` (next to `package.json`) lists 1–8 image paths used by
+the dsh-market detail view and the awesome-dsh-plugin storefront build.
+
+- **Paths are relative to the file and must stay inside the plugin directory**
+  (no leading `/`, no `..`). They must point at images already in the repo —
+  this repo's `assets/*.svg` (the state/multi-agent diagrams and the effect
+  previews). All paths are validated against the filesystem.
+- **In-repo, not catalog-side.** Declaring them in your own repo means you
+  update them by pushing here (the nightly build picks them up), with no PR
+  and no 404 rot. An absolute URL is accepted, but only on GitHub hosting
+  (`raw.githubusercontent.com`, `user-images.githubusercontent.com`, …).
+- **You don't need a `screenshots.json` to appear in the storefront** — with
+  none declared, the market lazily extracts images from your README. Declaring
+  them just controls order and selection (the curated list wins over README
+  extraction).
+- **Publishing also carries it**: it's in the npm `files` allowlist, so it
+  ships in the tarball too. Keep the referenced images under an allowlisted
+  directory (`assets/`), or add the path to `files`.
 
 ### Release
 1. `npm run release:patch` (or `release:minor` / `release:major`) — runs
