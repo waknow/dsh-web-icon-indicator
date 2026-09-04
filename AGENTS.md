@@ -27,7 +27,7 @@ The DSH platform this plugin runs on lives at **https://github.com/deepseek-ai/d
 | `icons/base.svg` | The single whale template with a `__COLOR__` placeholder; recolored/animated in the browser | The filename is locked by a route regex — treat as immutable |
 | `cordis.patch.yml` | Install patch that inserts the plugin row into the profile composition | Referenced by `package.json` → `dsh.bundle.patch` |
 | `README.md` / `README.zh.md` | User docs (EN / zh) | Update both on any behavior/config/icon change |
-| `package.json` | Metadata, `exports` (incl. `./client`), `dsh.client` declaration, `peerDependencies` (`@deepseek-ai/schemastery`), `files` allowlist, `scripts` (`release*` → `commit-and-tag-version`), `devDependencies` (`commit-and-tag-version`) | Release scripts — see *Release* |
+| `package.json` | Metadata, `exports` (incl. `./client`), `dsh.client` declaration, `engines.dsh` (declared DSH host floor — see *Declare/change the DSH host requirement*), `peerDependencies` (`@deepseek-ai/schemastery`), `files` allowlist, `scripts` (`release*` → `commit-and-tag-version`), `devDependencies` (`commit-and-tag-version`) | Release scripts — see *Release* |
 | `.github/workflows/publish.yml` | CI: publishes to npm on `v*` tags via **OIDC trusted publishing** (no token secret; `npm ci` + optional test/build, then `npm publish`) | Keeps the release flow hands-off — see *Release* |
 
 ## Code style & conventions
@@ -98,6 +98,32 @@ The rules below pin its requirements to this repo; follow them on any settings-c
 2. Add branches in the state machine, the aggregate `order` array, and the browser `apply()`/`frameAt()` functions.
 3. Extend the `DshWebIconIndicatorAggregate.state` union in `lib/types/index.d.ts`.
 4. Update the state tables in **both** READMEs (and the card's `STATE_NAMES` in `lib/client.js` if the card should edit it).
+
+### Declare or change the DSH host requirement (`engines.dsh`)
+`package.json` → `engines.dsh` is the plugin's declared DSH host floor. The
+dsh-market card reads the **published npm `latest` manifest** (via its
+`/dsh-market/discovery-compatibility` endpoint) and shows this as the plugin's
+host requirement (e.g. "DSH >=0.1.2-rc.1"); with no `engines.dsh` and no
+lockstep `@deepseek-ai/dsh*` peer, the card shows "未声明宿主要求".
+
+- **What counts as a host declaration** (in `deriveHostCompatibility`): an
+  `engines.dsh` range, **or** a `peerDependencies` entry for a package in the
+  DSH host-core set (`corePackageNames()` — names like `@deepseek-ai/dsh`,
+  `@deepseek-ai/dsh-base`, `@deepseek-ai/dsh-*`). `@deepseek-ai/schemastery`
+  and `@deepseek-ai/dsh-settings` do **not** count: schemastery isn't on the
+  DSH `@deepseek-ai/dsh*` host line, and `dsh-settings` is not in
+  `corePackageNames` (the host provides the `settings` service).
+- **Pick the range as the minimum DSH you actually tested against.** Prefer a
+  floor (`>=0.1.2-rc.1`) so newer hosts stay compatible; use `^0.1.x` / `~0.1.x`
+  only if you truly want an upper bound. `deriveHostCompatibility` evaluates
+  with `includePrerelease: true`, so prerelease host tags satisfy ordinary
+  ranges.
+- **Local edits do not change the card**: the market reads the published
+  manifest, so the declaration only takes effect after a new npm publish (see
+  *Release*). Don't bump `engines.dsh` and expect the marketplace card to
+  update without a release.
+- This field is metadata-only — it does not change plugin behavior. It only
+  declares compatibility so the marketplace can label and filter it.
 
 ### Release
 1. `npm run release:patch` (or `release:minor` / `release:major`) — runs
