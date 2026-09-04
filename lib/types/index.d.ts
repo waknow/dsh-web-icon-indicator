@@ -102,7 +102,7 @@ declare const plugin: {
   name: "dsh-web-icon-indicator";
   inject: readonly ["webServer", "timer", "agents", "fs", "sandboxPolicy"];
   config: DshWebIconIndicatorConfig;
-  apply(ctx: unknown): void;
+  apply(ctx: unknown, config?: unknown): void;
   /** Settings namespace carrying the config (`web-icon-indicator`). */
   SETTINGS_NAMESPACE: string;
   /** Schemastery schema validating the config surface. */

@@ -100,8 +100,22 @@ function makeCtx() {
   const onHandlers = {};
   const timers = [];
   let agentsList = [];
+  // Settings service stub: mirrors the DSH 0.1.2 `settings.installSection`
+  // contract. The plugin reaches it through `ctx.inject(["settings"], cb)` (never
+  // imports `@deepseek-ai/dsh-settings`), so the captured shape lives here so the
+  // state-machine + settings-wiring assertions below can drive setSource/onChange.
+  const settings = {
+    installSection(_owner, ns, schema, entry, opts) {
+      globalThis.__DSH_ICON_TEST__ = { ns, schema, entry, settingsOpts: opts };
+    },
+  };
   const ctx = {
-    get: (k) => (k === "config" ? {} : undefined),
+    get: (k) => (k === "settings" ? settings : k === "config" ? {} : undefined),
+    // Mirror the host's `ctx.inject(["settings"], cb)` pattern: run the callback
+    // with a settingsCtx exposing the stub provider.
+    inject: (deps, cb) => {
+      if (Array.isArray(deps) && deps.includes("settings")) cb({ settings });
+    },
     webServer: {
       register: (r) => routes.push(r),
       tapIndex: (fn) => taps.push(fn),
@@ -221,7 +235,7 @@ const { default: plugin } = await import(new URL("../lib/index.js", import.meta.
     {
       id: "A",
       status: "running",
-      session: { events: [{ type: "approval/asked", data: { id: "p1" } }] },
+      session: { snapshotEvents: () => [{ type: "approval/asked", data: { id: "p1" } }] },
     },
     { id: "B", status: "running" },
   ]);
@@ -235,7 +249,7 @@ const { default: plugin } = await import(new URL("../lib/index.js", import.meta.
       id: "A",
       status: "running",
       session: {
-        events: [
+        snapshotEvents: () => [
           { type: "approval/asked", data: { id: "p1" } },
           { type: "approval/decided", data: { id: "p1" } },
         ],
