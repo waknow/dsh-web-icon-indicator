@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1](https://github.com/waknow/dsh-web-icon-indicator/compare/v0.4.0...v0.4.1) (2026-09-04)
+
+### Added
+
+* add marketplace screenshots.json and ship it in the npm tarball ([8efb5e7](https://github.com/waknow/dsh-web-icon-indicator/commit/8efb5e752c2759681bfbf78b9ccd8650d1f6973a))
+* declare DSH host requirement via engines.dsh ([ec1be5c](https://github.com/waknow/dsh-web-icon-indicator/commit/ec1be5c6723a1237c68acc317bd26580fd06d9d0))
+
+### Changed
+
+* document declaring/updating the DSH host requirement (engines.dsh) ([fb568b7](https://github.com/waknow/dsh-web-icon-indicator/commit/fb568b71362b4931712240087213845cfb3b76ee))
 ## [0.4.0](https://github.com/waknow/dsh-web-icon-indicator/compare/v0.3.1...v0.4.0) (2026-09-04)
 
 ### Added
