@@ -7,6 +7,8 @@
 [![npm downloads](https://img.shields.io/npm/dm/dsh-web-icon-indicator)](https://www.npmjs.com/package/dsh-web-icon-indicator)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
+> **⚠️ DSH version support** — requires **DSH ≥ 0.1.2** (the settings-service API the configuration card uses). Built & verified against **DSH 0.1.2-rc.1**, the highest version currently tested. On **DSH < 0.1.2** the favicon still works, but the settings UI (**Settings → Plugins → Plugin config**) is unavailable.
+
 Browser tab favicon reflects the current DSH session state — `idle` / `running` / `asking` / `done` — so you can see at a glance whether a session needs your attention, even when the tab is in the background.
 
 ## ✨ What it does
@@ -151,7 +153,7 @@ Entries are shallow-merged over the defaults, so you can override only a few sta
       done:    { effect: heartbeat, colors: ['#2ECC71'] }
 ```
 
-### Settings page & `settings.yaml` (DSH ≥ rc7)
+### Settings page & `settings.yaml` (DSH ≥ 0.1.2)
 
 The plugin registers the whole config surface above with the DSH settings
 service under the `web-icon-indicator` namespace (a schemastery schema in

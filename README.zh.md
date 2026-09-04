@@ -7,6 +7,8 @@
 [![npm downloads](https://img.shields.io/npm/dm/dsh-web-icon-indicator)](https://www.npmjs.com/package/dsh-web-icon-indicator)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
+> **⚠️ DSH 版本支持** —— 需要 **DSH ≥ 0.1.2**（设置卡片所用的 settings 服务 API）。已针对当前最高测试版本 **DSH 0.1.2-rc.1** 构建并验证。在 **DSH < 0.1.2** 上 favicon 仍可用，但设置页（**设置 → 插件 → 插件配置**）不可用。
+
 浏览器标签页 favicon 实时反映 DSH 会话状态——`待机` / `运行中` / `提问` / `完成`——让你在标签页置于后台时也能一眼看出是否有会话需要处理。
 
 ## ✨ 功能特性
@@ -146,7 +148,7 @@ config:
       done:    { effect: heartbeat, colors: ['#2ECC71'] }
 ```
 
-### 设置页与 `settings.yaml`（DSH ≥ rc7）
+### 设置页与 `settings.yaml`（DSH ≥ 0.1.2）
 
 插件把上面整套配置注册进 DSH settings 服务，命名空间为 `web-icon-indicator`
 （schema 为 `lib/index.js` 中的 schemastery schema）：

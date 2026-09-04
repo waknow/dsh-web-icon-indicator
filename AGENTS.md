@@ -20,23 +20,23 @@ The DSH platform this plugin runs on lives at **https://github.com/deepseek-ai/d
 
 | Path | Role | Notes |
 | --- | --- | --- |
-| `lib/index.js` | **The entire host implementation**: Cordis plugin + per-agent state machine + HTTP routes + injected browser script + schemastery `CONFIG_SCHEMA` / `SETTINGS_NAMESPACE` registered via `installSettingsSection` | The file you will normally edit for host behavior |
+| `lib/index.js` | **The entire host implementation**: Cordis plugin + per-agent state machine + HTTP routes + injected browser script + schemastery `CONFIG_SCHEMA` / `SETTINGS_NAMESPACE` registered into the host `settings` service | The file you will normally edit for host behavior |
 | `lib/client.js` | **Browser half** (hand-written `window.__ModuleLoader__.load` bundle, no build step): registers the settings card into `settings.plugin.item` keyed by `web-icon-indicator` | Edit when changing the settings-page card (fields, labels, save/reset) |
 | `lib/types/index.d.ts` | Public config & aggregate types | Keep in sync with the config surface + `CONFIG_SCHEMA` in `lib/index.js` |
 | `lib/types/client/index.d.ts` | Browser-half types (`inject` / `apply`) | Keep in sync with `lib/client.js` |
 | `icons/base.svg` | The single whale template with a `__COLOR__` placeholder; recolored/animated in the browser | The filename is locked by a route regex — treat as immutable |
 | `cordis.patch.yml` | Install patch that inserts the plugin row into the profile composition | Referenced by `package.json` → `dsh.bundle.patch` |
 | `README.md` / `README.zh.md` | User docs (EN / zh) | Update both on any behavior/config/icon change |
-| `package.json` | Metadata, `exports` (incl. `./client`), `dsh.client` declaration, `peerDependencies` (`@deepseek-ai/schemastery`, `@deepseek-ai/dsh-settings`), `files` allowlist, `scripts` (`release*` → `commit-and-tag-version`), `devDependencies` (`commit-and-tag-version`) | Release scripts — see *Release* |
+| `package.json` | Metadata, `exports` (incl. `./client`), `dsh.client` declaration, `peerDependencies` (`@deepseek-ai/schemastery`), `files` allowlist, `scripts` (`release*` → `commit-and-tag-version`), `devDependencies` (`commit-and-tag-version`) | Release scripts — see *Release* |
 | `.github/workflows/publish.yml` | CI: publishes to npm on `v*` tags via **OIDC trusted publishing** (no token secret; `npm ci` + optional test/build, then `npm publish`) | Keeps the release flow hands-off — see *Release* |
 
 ## Code style & conventions
 
-- ESM only (`"type": "module"`); the only runtime dependencies are `@deepseek-ai/schemastery` and `@deepseek-ai/dsh-settings` (settings registration), declared as `peerDependencies` per the awesome-dsh-plugin contributing guide — keep it that way.
-- Plugin contract: default export `{ name, inject, config, apply(ctx), SETTINGS_NAMESPACE, CONFIG_SCHEMA }`; `inject` = `webServer, timer, agents, fs, sandboxPolicy`.
+- ESM only (`"type": "module"`); the only runtime dependency is `@deepseek-ai/schemastery` (config schema), declared as a `peerDependency` per the awesome-dsh-plugin contributing guide — keep it that way. The host provides the `settings` service (and `@deepseek-ai/dsh-settings` is NOT imported by either half anymore — the plugin attaches its section through `ctx.inject(["settings"], …)`).
+- Plugin contract: default export `{ name, inject, config, apply(ctx, config), SETTINGS_NAMESPACE, CONFIG_SCHEMA }`; `inject` = `webServer, timer, agents, fs, sandboxPolicy`. Cordis passes the resolved composition config as the second argument to `apply`.
 - All session state lives in module-scope Maps/Sets keyed by agent id: `states`, `asking`, `askDone`, `askTimers`, `lastSeen` (see `lib/index.js`).
 - The browser script is the `INJECTED_SCRIPT` template string, injected via `webServer.tapIndex`; config flows in through placeholder tokens (`__STATUS_PATH__`, `__BASE_PATH__`, `__CFG__`), each paired with a `.replace()` call in `apply()` (rebuilt by the settings `onChange` hook — the injected script is a `let`, so the next page load picks up settings edits). `__CFG__` carries the `{ states }` object as JSON, where each state is `{ effect, colors[], speed? }`.
-- The config surface is registered with the DSH settings service (`web-icon-indicator` namespace). `CONFIG_SCHEMA` defaults must mirror `DEFAULTS`; `installSettingsSection` in `apply()` wires the composition entry as `base` and `source()` as the live config (falls back to the entry when no settings service is composed).
+- The config surface is registered with the DSH settings service (`web-icon-indicator` namespace). `CONFIG_SCHEMA` defaults must mirror `DEFAULTS`; `ctx.inject(["settings"], (settingsCtx) => settingsCtx.settings.installSection(ctx, SETTINGS_NAMESPACE, CONFIG_SCHEMA, entry, { setSource, onChange }))` in `apply()` wires the composition entry as `base` and `source()` as the live config (the callback never fires when no settings provider is composed, so the plugin keeps working on its composition entry + DEFAULTS).
 - `lib/client.js` is a hand-written ModuleLoader factory bundle (no bundler): it `require("react")` and `require("@deepseek-ai/dsh-client-ui-primitives")` (both shell-provided statics, so they always resolve) and exposes `{ apply, inject }` with `inject = ["slots", "settingsScope", "locale"]`. Keep it that way — never add imports that aren't guaranteed registered factories or seed words.
 - UI display parts in `lib/client.js` should prefer components from `@deepseek-ai/dsh-client-ui-primitives` (Button, Input, Icon* icons, …) over hand-rolled equivalents — that is the official standard (the shell's own plugin cards use them). Hand-roll only where primitives has no counterpart: a passive status badge (`Pill` is an interactive chip), a `<select>` (no primitives Select), or layout wrappers. Inline styles may use the shell's `--dsw-alias-*` design tokens.
 - Keep changes small and localized to `lib/index.js` / `lib/client.js`; prefer editing over restructuring.
@@ -51,11 +51,15 @@ The rules below pin its requirements to this repo; follow them on any settings-c
 - **Namespace is the join key.** `web-icon-indicator` appears identically in
   `lib/index.js` (`SETTINGS_NAMESPACE`), `lib/client.js` (`NS`), and the slot
   registration's `key` — change all three together.
-- **Host half registers the namespace** through `installSettingsSection` in
-  `apply()` (layers the composition entry as `base` under the user document;
-  keeps working when no settings provider is mounted). Keep the schema in
-  `CONFIG_SCHEMA`; if a future field needs it, `role("secret")` keeps a value
-  off every response and `applies: "restart"` marks a change as next-start-only.
+- **Host half registers the namespace** into the host `settings` service via
+  `ctx.inject(["settings"], (settingsCtx) =>
+  settingsCtx.settings.installSection(ctx, SETTINGS_NAMESPACE, CONFIG_SCHEMA,
+  entry, { setSource, onChange }))` in `apply()` (layers the composition entry as
+  `base` under the user document; the callback never fires when no settings
+  provider is mounted, so the plugin keeps working on its composition entry).
+  Keep the schema in `CONFIG_SCHEMA`; if a future field needs it,
+  `role("secret")` keeps a value off every response and `applies: "restart"`
+  marks a change as next-start-only.
 - **The card owns everything inside it** — chrome, controls, copy. The
   bundle-purity gate rejects value imports across plugins, so `PluginCard`,
   `CardForm`, `ValueField`, … from `@deepseek-ai/dsh-client-ui-settings-plugins`
@@ -157,7 +161,7 @@ Additionally verify manually:
 
 ## Do NOT
 
-- Add a build system, test framework, linter, or NEW dependencies without an explicit request. This repo is deliberately zero-build (the only automated check is the zero-dependency `test/verify.js`, added on request); the only runtime deps are `@deepseek-ai/schemastery` + `@deepseek-ai/dsh-settings` (settings registration, added on request), declared as `peerDependencies` (the host harness provides them). The single `devDependency` is `commit-and-tag-version` (release tooling only — added on request; never promote it to a runtime dep).
+- Add a build system, test framework, linter, or NEW dependencies without an explicit request. This repo is deliberately zero-build (the only automated check is the zero-dependency `test/verify.js`, added on request); the only runtime dep is `@deepseek-ai/schemastery` (config schema, added on request), declared as a `peerDependency` (the host harness provides it). The host provides the `settings` service; `@deepseek-ai/dsh-settings` is not imported by either half. The single `devDependency` is `commit-and-tag-version` (release tooling only — added on request; never promote it to a runtime dep).
 - Rename `base.svg` or change the icon route regex `^base\.svg$` without updating the state machine, browser script, types, and both READMEs together.
-- Break the plugin contract `{ name, inject, config, apply(ctx) }` (+ `SETTINGS_NAMESPACE` / `CONFIG_SCHEMA`) or the `dsh.bundle.patch` → `cordis.patch.yml` wiring.
+- Break the plugin contract `{ name, inject, config, apply(ctx, config) }` (+ `SETTINGS_NAMESPACE` / `CONFIG_SCHEMA`) or the `dsh.bundle.patch` → `cordis.patch.yml` wiring.
 - Let `agent/turn-stopping` override the `asking` pin while it is active.
