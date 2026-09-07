@@ -1,6 +1,6 @@
 # dsh-web-icon-indicator
 
-> 📖 [English](README.md) · [中文文档](README.zh.md) · 📝 [更新记录](CHANGELOG.md) · [Releases](https://github.com/waknow/dsh-web-icon-indicator/releases)
+> 📖 [English](README.md) · [中文文档](README.zh.md) · 📝 [更新记录](CHANGELOG.md) · [Releases](https://github.com/waknow/dsh-web-icon-indicator/releases) · 🎨 [在线演示](https://waknow.github.io/dsh-web-icon-indicator/)
 
 [![awesome · DSH plugin](https://awesome-dsh-plugin.com/badge.svg)](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)
 [![npm version](https://img.shields.io/npm/v/dsh-web-icon-indicator)](https://www.npmjs.com/package/dsh-web-icon-indicator)
@@ -10,6 +10,8 @@
 > **⚠️ DSH 版本支持** —— 需要 **DSH ≥ 0.1.2**（设置卡片所用的 settings 服务 API）。已针对当前最高测试版本 **DSH 0.1.2-rc.1** 构建并验证。在 **DSH < 0.1.2** 上 favicon 仍可用，但设置页（**设置 → 插件 → 插件配置**）不可用。
 
 浏览器标签页 favicon 实时反映 DSH 会话状态——`待机` / `运行中` / `提问` / `完成`——让你在标签页置于后台时也能一眼看出是否有会话需要处理。
+
+> 🎨 **在线演示** — <https://waknow.github.io/dsh-web-icon-indicator/> · 在浏览器里直接体验四种状态、多 Agent 计数与全部特效，无需安装。试玩间还能驱动演示页自身标签页的真实 favicon——正如插件在 DSH 页面里做的那样。
 
 ## ✨ 功能特性
 

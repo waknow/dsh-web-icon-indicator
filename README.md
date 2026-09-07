@@ -1,6 +1,6 @@
 # dsh-web-icon-indicator
 
-> 📖 [中文文档](README.zh.md) · [English](README.md) · 📝 [Changelog](CHANGELOG.md) · [Releases](https://github.com/waknow/dsh-web-icon-indicator/releases)
+> 📖 [中文文档](README.zh.md) · [English](README.md) · 📝 [Changelog](CHANGELOG.md) · [Releases](https://github.com/waknow/dsh-web-icon-indicator/releases) · 🎨 [Live demo](https://waknow.github.io/dsh-web-icon-indicator/)
 
 [![awesome · DSH plugin](https://awesome-dsh-plugin.com/badge.svg)](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)
 [![npm version](https://img.shields.io/npm/v/dsh-web-icon-indicator)](https://www.npmjs.com/package/dsh-web-icon-indicator)
@@ -10,6 +10,8 @@
 > **⚠️ DSH version support** — requires **DSH ≥ 0.1.2** (the settings-service API the configuration card uses). Built & verified against **DSH 0.1.2-rc.1**, the highest version currently tested. On **DSH < 0.1.2** the favicon still works, but the settings UI (**Settings → Plugins → Plugin config**) is unavailable.
 
 Browser tab favicon reflects the current DSH session state — `idle` / `running` / `asking` / `done` — so you can see at a glance whether a session needs your attention, even when the tab is in the background.
+
+> 🎨 **Live demo** — <https://waknow.github.io/dsh-web-icon-indicator/> · see the four states, the multi-agent counter and every effect rendered live in your browser, no install needed. The playground even drives the demo page's own tab favicon, exactly like the plugin does on a DSH page.
 
 ## ✨ What it does
 

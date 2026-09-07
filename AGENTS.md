@@ -30,6 +30,8 @@ The DSH platform this plugin runs on lives at **https://github.com/deepseek-ai/d
 | `screenshots.json` | Marketplace storefront screenshots (1–8 image paths, relative to the file, in-repo only) | Read by the awesome-dsh-plugin nightly build & dsh-market detail view; see *Declare or change marketplace screenshots* |
 | `package.json` | Metadata, `exports` (incl. `./client`), `dsh.client` declaration, `engines.dsh` (declared DSH host floor — see *Declare/change the DSH host requirement*), `peerDependencies` (`@deepseek-ai/schemastery`), `files` allowlist (incl. `screenshots.json`), `scripts` (`release*` → `commit-and-tag-version`), `devDependencies` (`commit-and-tag-version`) | Release scripts — see *Release* |
 | `.github/workflows/publish.yml` | CI: publishes to npm on `v*` tags via **OIDC trusted publishing** (no token secret; `npm ci` + optional test/build, then `npm publish`) | Keeps the release flow hands-off — see *Release* |
+| `.github/workflows/pages.yml` | CI: deploys the `docs/` showcase site to GitHub Pages on pushes touching `docs/**` / `assets/**` (static, no build; re-copies `assets/multi-agent-count.svg` into `docs/assets/` before upload) | One-time setup: repo Settings → Pages → Source: **GitHub Actions** — see *Publish the GitHub Pages site* |
+| `docs/` | GitHub Pages showcase site: `index.html` + `style.css` + `main.js` (bilingual zh/en, zero-build) plus `safari-favicon-research.md`; `docs/assets/` holds `favicon.svg` (generated from `icons/base.svg`) and a deploy-refreshed copy of `assets/multi-agent-count.svg` | The site's whale renderer is a hand-port of the injected script — keep them in sync, see *Publish the GitHub Pages site* |
 
 ## Code style & conventions
 
@@ -145,6 +147,29 @@ the dsh-market detail view and the awesome-dsh-plugin storefront build.
 - **Publishing also carries it**: it's in the npm `files` allowlist, so it
   ships in the tarball too. Keep the referenced images under an allowlisted
   directory (`assets/`), or add the path to `files`.
+
+### Publish the GitHub Pages site (`docs/`)
+The showcase site lives in `docs/` and is plain static HTML/CSS/JS — **no build
+step**. `.github/workflows/pages.yml` uploads `docs/` via
+`actions/upload-pages-artifact` and deploys it; enable it once under repo
+Settings → Pages → Source: **GitHub Actions** (or trigger it manually via
+`workflow_dispatch`). Local preview: open `docs/index.html` directly or serve
+the repo root and browse to `/docs/` — every reference is relative.
+
+- `docs/main.js` re-implements the injected script's renderer (color math,
+  effect timing, count-block geometry) and carries its own copy of the whale
+  `PATH` from `icons/base.svg`. When you change the whale path, effect timing,
+  or count-block geometry in `lib/index.js`, port the same change here —
+  `test/verify.js` does NOT cover `docs/`.
+- `docs/assets/favicon.svg` is `icons/base.svg` with `__COLOR__` replaced by
+  `#1a1a1a`; regenerate it the same way if the template changes.
+- `docs/assets/multi-agent-count.svg` is a committed copy of
+  `assets/multi-agent-count.svg` (needed for local file:// preview); the Pages
+  workflow re-copies it from `assets/` on every deploy so it cannot go stale in
+  production. Refresh the committed copy manually when the source changes.
+- Copy is bilingual: `data-i18n` keys in `index.html`, zh/en dictionaries in
+  `main.js`. Default `zh`, resolved per `navigator.language`, persisted in
+  `localStorage` (`dshwii-lang`).
 
 ### Release
 1. `npm run release:patch` (or `release:minor` / `release:major`) — runs

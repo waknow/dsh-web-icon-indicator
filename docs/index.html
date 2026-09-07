@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light" />
+  <title>dsh-web-icon-indicator — 会话状态，一眼可见</title>
+  <meta name="description" content="dsh-web-icon-indicator 把 DSH 会话状态实时映射到浏览器标签页图标：待机、运行中、等待输入、完成——即使标签页沉在后台，也一眼看清哪些会话需要你处理。" />
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+  <link rel="stylesheet" href="style.css" />
+  <meta property="og:title" content="dsh-web-icon-indicator — 会话状态，一眼可见" />
+  <meta property="og:description" content="Browser tab favicon reflects the DSH session state: idle / running / asking / done. Recolored and animated in the browser from one base.svg." />
+  <meta property="og:type" content="website" />
+</head>
+<body>
+
+  <!-- ===== top nav ===== -->
+  <header class="topnav">
+    <div class="container topnav-inner">
+      <a class="brand" href="./">
+        <svg viewBox="0 0 50 50" aria-hidden="true"><use href="#whale" /></svg>
+        <span>dsh-web-icon-indicator</span>
+        <span class="brand-badge" data-i18n="hero.eyebrow">DeepSeek Harness · 浏览器标签页插件</span>
+      </a>
+      <nav class="nav-links" aria-label="sections">
+        <a href="#states" data-i18n="nav.states">状态</a>
+        <a href="#count" data-i18n="nav.count">多 Agent</a>
+        <a href="#effects" data-i18n="nav.effects">特效</a>
+        <a href="#config" data-i18n="nav.config">配置</a>
+        <a href="#how" data-i18n="nav.how">原理</a>
+        <a href="#install" data-i18n="nav.install">安装</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="icon-link" href="https://github.com/waknow/dsh-web-icon-indicator" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+          <span data-i18n="nav.github">GitHub</span>
+        </a>
+        <button class="lang-btn" id="lang-toggle" type="button" aria-label="Switch language">EN</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== hero ===== -->
+  <section class="hero">
+    <div class="container hero-grid">
+      <div>
+        <span class="eyebrow" data-i18n="hero.eyebrow">DeepSeek Harness · 浏览器标签页插件</span>
+        <h1><span data-i18n="hero.h1a">会话状态，</span><span class="hl" data-i18n="hero.h1b">一眼可见。</span></h1>
+        <p class="hero-sub" data-i18n="hero.sub">dsh-web-icon-indicator 把 DSH 会话状态实时映射到浏览器标签页图标：待机、运行中、等待输入、完成——即使标签页沉在后台、甚至被钉住，也一眼看清哪些会话需要你处理。</p>
+        <div class="hero-cmd">
+          <span class="dollar">$</span>
+          <code>dsh plugin --profile web add dsh-web-icon-indicator@latest</code>
+          <button class="copy-btn" type="button" data-copy="dsh plugin --profile web add dsh-web-icon-indicator@latest" data-i18n="copy">复制</button>
+        </div>
+        <div class="hero-cta-row">
+          <a class="btn btn-primary" href="https://github.com/waknow/dsh-web-icon-indicator" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+            <span data-i18n="hero.cta.github">查看 GitHub</span>
+          </a>
+          <a class="btn btn-ghost" href="https://www.npmjs.com/package/dsh-web-icon-indicator" target="_blank" rel="noopener">npm</a>
+        </div>
+        <p class="hero-hint" data-i18n="hero.hint">无需构建、零依赖 · 一个 base.svg 模板，浏览器端逐帧上色</p>
+      </div>
+
+      <div>
+        <div class="window" aria-hidden="true">
+          <div class="window-tabs">
+            <div class="wtab active">
+              <img id="hero-tab-favicon" alt="" width="16" height="16" />
+              <span class="wtab-title" data-i18n="hero.tab.title">DeepSeek Harness — Web</span>
+              <span class="wtab-close">×</span>
+            </div>
+            <div class="wtab wtab-pinned">
+              <img id="hero-pinned-favicon" alt="" width="16" height="16" />
+              <span class="wtab-title" data-i18n="hero.pinned.title">3 个会话</span>
+            </div>
+            <div class="wtab-new">+</div>
+          </div>
+          <div class="window-url">
+            <svg width="11" height="11" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M17 9V7a5 5 0 0 0-10 0v2H5v12h14V9h-2zm-8-2a3 3 0 0 1 6 0v2H9V7z"/></svg>
+            <span data-i18n="hero.url">localhost:3080</span>
+          </div>
+          <div class="window-body">
+            <div id="hero-body-icon" class="whale-big"></div>
+            <div>
+              <span class="window-state">
+                <span class="dot" id="hero-state-dot"></span>
+                <span data-i18n="hero.state.label">当前状态</span>
+                <strong id="hero-state-name" data-i18n="state.running">运行中</strong>
+              </span>
+            </div>
+          </div>
+        </div>
+        <p class="window-cap" data-i18n="hero.mock.cap">模拟标签页 · 由本页 JavaScript 实时渲染，与插件渲染管线一致</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== four states ===== -->
+  <section class="section alt" id="states">
+    <div class="container">
+      <div class="sec-head reveal">
+        <div class="sec-label" data-i18n="states.eyebrow">核心能力</div>
+        <h2 data-i18n="states.h2">四种状态，实时流转</h2>
+        <p class="sec-sub" data-i18n="states.sub">多个会话并行时按优先级聚合 —— asking &gt; running &gt; done &gt; idle，一次只显示最重要的那个状态。</p>
+      </div>
+      <div class="cards4">
+        <div class="state-card reveal">
+          <div class="state-chip" id="sc-idle"></div>
+          <div class="state-name">idle</div>
+          <h3 data-i18n="state.idle">待机</h3>
+          <p data-i18n="card.idle.desc">会话空闲，深色鲸鱼安静地待在标签页上，不打扰。</p>
+          <div class="state-meta">
+            <span class="dots"><i style="background:#1a1a1a"></i></span>
+            <span class="tag" data-i18n="tag.static">static</span>
+          </div>
+        </div>
+        <div class="state-card reveal">
+          <div class="state-chip" id="sc-running"></div>
+          <div class="state-name">running</div>
+          <h3 data-i18n="state.running">运行中</h3>
+          <p data-i18n="card.running.desc">Agent 正在工作，明黄色一路跟随，任务进行中一目了然。</p>
+          <div class="state-meta">
+            <span class="dots"><i style="background:#FACC15"></i></span>
+            <span class="tag" data-i18n="tag.static">static</span>
+          </div>
+        </div>
+        <div class="state-card reveal">
+          <div class="state-chip" id="sc-asking"></div>
+          <div class="state-name">asking</div>
+          <h3 data-i18n="state.asking">等待输入</h3>
+          <p data-i18n="card.asking.desc">ask_user_question 或权限审批阻塞时红黄交替闪烁——切回来之前也不会错过。</p>
+          <div class="state-meta">
+            <span class="dots"><i style="background:#E5484D"></i><i style="background:#FACC15"></i></span>
+            <span class="tag" data-i18n="tag.blink">blink · 400ms</span>
+          </div>
+        </div>
+        <div class="state-card reveal">
+          <div class="state-chip" id="sc-done"></div>
+          <div class="state-name">done</div>
+          <h3 data-i18n="state.done">完成</h3>
+          <p data-i18n="card.done.desc">回合结束闪现绿色，驻留片刻后自动回到待机。</p>
+          <div class="state-meta">
+            <span class="dots"><i style="background:#22A06B"></i></span>
+            <span class="tag" data-i18n="tag.static">static</span>
+          </div>
+        </div>
+      </div>
+      <p class="sec-foot" data-i18n="states.foot">asking 与 done 的最短驻留时间可配置（askingHoldMs / doneHoldMs）：即使用户秒答、回合瞬间结束，状态也不会一闪而过。</p>
+    </div>
+  </section>
+
+  <!-- ===== multi-agent count ===== -->
+  <section class="section" id="count">
+    <div class="container">
+      <div class="sec-head reveal">
+        <div class="sec-label" data-i18n="count.eyebrow">多会话并行</div>
+        <h2 data-i18n="count.h2">标签页即计数器</h2>
+        <p class="sec-sub" data-i18n="count.sub">不止一个 Agent 在工作时，鲸鱼让位于满幅数字块：实时显示活动会话数，沿用状态配色与特效渲染，钉住的小标签页里也清晰可读。</p>
+      </div>
+
+      <div class="demo-panel reveal">
+        <div class="demo-left">
+          <span class="ctl-label" data-i18n="count.ctl">活动 Agent 数</span>
+          <div class="demo-chip"><div id="count-preview"></div></div>
+          <div class="stepper">
+            <button type="button" id="count-minus" aria-label="less agents">−</button>
+            <span class="num" id="count-num">3</span>
+            <button type="button" id="count-plus" aria-label="more agents">+</button>
+          </div>
+          <label class="checkline"><input type="checkbox" id="count-ask" /><span data-i18n="count.ask">其中一个正在等待输入</span></label>
+        </div>
+        <div class="demo-right">
+          <ul>
+            <li><span class="mono">0–1</span><span data-i18n="count.l1">活动会话 ≤ 1 —— 显示状态鲸鱼</span></li>
+            <li><span class="mono">2–99</span><span data-i18n="count.l2">活动会话 2–99 —— 显示满幅数字块，字号随位数自适应（16px 钉住标签页依然可读）</span></li>
+            <li><span class="mono">100+</span><span data-i18n="count.l3">活动会话 100+ —— 显示 99+；asking 优先时数字块同样红黄闪烁</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <figure class="diagram reveal">
+        <img src="assets/multi-agent-count.svg" alt="active=0 dark whale, active=1 yellow whale, active=2/3 yellow count blocks, active=3 asking red block (blinks), active=100 shows 99+" loading="lazy" />
+        <figcaption data-i18n="count.fig">图示 · 活动 Agent 数与标签页图标</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ===== effects playground ===== -->
+  <section class="section alt" id="effects">
+    <div class="container">
+      <div class="sec-head reveal">
+        <div class="sec-label" data-i18n="effects.eyebrow">视觉语言</div>
+        <h2 data-i18n="effects.h2">六种内置特效</h2>
+        <p class="sec-sub" data-i18n="effects.sub">浏览器从不播放 favicon 里的 SVG 动画——所以本页的每个特效都和插件一样，由 JavaScript 逐帧重建。点击任意卡片在下方试玩。</p>
+      </div>
+
+      <div class="fx-grid reveal">
+        <button class="fx-card" type="button" id="fx-card-static">
+          <span class="fx-ic" id="fx-ic-static"></span>
+          <span><b>static</b><span data-i18n="fx.static.desc">单帧纯色，使用 colors[0]</span></span>
+        </button>
+        <button class="fx-card" type="button" id="fx-card-blink">
+          <span class="fx-ic" id="fx-ic-blink"></span>
+          <span><b>blink</b><span data-i18n="fx.blink.desc">colors[0] ⇄ colors[1] 按 speed 交替</span></span>
+        </button>
+        <button class="fx-card" type="button" id="fx-card-breath">
+          <span class="fx-ic" id="fx-ic-breath"></span>
+          <span><b>breath</b><span data-i18n="fx.breath.desc">在 colors[0] 与 colors[1] 之间平滑脉动</span></span>
+        </button>
+        <button class="fx-card" type="button" id="fx-card-rainbow">
+          <span class="fx-ic" id="fx-ic-rainbow"></span>
+          <span><b>rainbow</b><span data-i18n="fx.rainbow.desc">从 colors[0] 的色相出发循环色轮</span></span>
+        </button>
+        <button class="fx-card" type="button" id="fx-card-heartbeat">
+          <span class="fx-ic" id="fx-ic-heartbeat"></span>
+          <span><b>heartbeat</b><span data-i18n="fx.heartbeat.desc">lub-dub 双搏动缩放，colors[0]</span></span>
+        </button>
+        <button class="fx-card" type="button" id="fx-card-bounce">
+          <span class="fx-ic" id="fx-ic-bounce"></span>
+          <span><b>bounce</b><span data-i18n="fx.bounce.desc">鲸鱼按 speed 上下弹跳，colors[0]</span></span>
+        </button>
+      </div>
+
+      <div class="playground reveal">
+        <div class="pg-left">
+          <div class="pg-preview" id="pg-preview"></div>
+          <div class="pg-sync">
+            <label class="checkline"><input type="checkbox" id="pg-sync-toggle" checked /><span data-i18n="pg.sync">同步到本页标签页图标</span></label>
+            <p class="pg-sync-hint" data-i18n="pg.sync.hint">开启后，浏览器标签页上真实的 favicon 会跟随这里的配置实时变化——正是插件在 DSH 页面里做的事。看看你的标签页 →</p>
+          </div>
+        </div>
+        <div class="pg-controls">
+          <div>
+            <span class="ctl-label" data-i18n="pg.state">状态</span>
+            <div class="seg" id="pg-state-seg">
+              <button type="button" data-state="idle">idle</button>
+              <button type="button" data-state="running">running</button>
+              <button type="button" data-state="asking">asking</button>
+              <button type="button" data-state="done">done</button>
+            </div>
+          </div>
+          <div>
+            <span class="ctl-label" data-i18n="pg.effect">特效</span>
+            <div class="seg" id="pg-effect-seg">
+              <button type="button" data-effect="static">static</button>
+              <button type="button" data-effect="blink">blink</button>
+              <button type="button" data-effect="breath">breath</button>
+              <button type="button" data-effect="rainbow">rainbow</button>
+              <button type="button" data-effect="heartbeat">heartbeat</button>
+              <button type="button" data-effect="bounce">bounce</button>
+            </div>
+          </div>
+          <div>
+            <span class="ctl-label" data-i18n="pg.speed">周期（动画特效）</span>
+            <div class="speed-row" id="pg-speed-row">
+              <input type="range" id="pg-speed" min="200" max="2400" step="50" value="1200" />
+              <span class="speed-val" id="pg-speed-val">1200 ms</span>
+            </div>
+          </div>
+          <div>
+            <span class="ctl-label" data-i18n="pg.colors">颜色</span>
+            <div class="color-grid">
+              <div class="color-item">
+                <label for="pg-c0" data-i18n="pg.color0">主色 colors[0]</label>
+                <div class="row">
+                  <input type="color" id="pg-c0" value="#1a1a1a" />
+                  <input type="text" id="pg-c0t" value="#1a1a1a" spellcheck="false" />
+                </div>
+              </div>
+              <div class="color-item" id="pg-c1-item">
+                <label for="pg-c1" data-i18n="pg.color1">副色 colors[1]</label>
+                <div class="row">
+                  <input type="color" id="pg-c1" value="#116329" />
+                  <input type="text" id="pg-c1t" value="#116329" spellcheck="false" />
+                </div>
+              </div>
+            </div>
+            <p class="color-hint" data-i18n="pg.color.hint">副色仅被 blink / breath 使用；未提供时自动派生更深一档的同色。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== settings card ===== -->
+  <section class="section" id="config">
+    <div class="container config-grid">
+      <div class="config-copy reveal">
+        <div class="sec-label" data-i18n="config.eyebrow">零 YAML</div>
+        <h2 data-i18n="config.h2">设置页里的完整配置界面</h2>
+        <p data-i18n="config.p1">DSH ≥ 0.1.2 时，Web GUI 的「设置 → 插件 → 插件配置」里会出现一张 Favicon indicator 卡片：每个状态一行，特效、颜色、周期全部可视化编辑，还带实时色板预览。</p>
+        <p data-i18n="config.p2">改动保存进 profile 的 settings.yaml，并在约 1 秒内同步到正在运行的标签页——无需重启宿主，也无需刷新页面。</p>
+        <ol class="steps">
+          <li><span class="n">1</span><span data-i18n="config.step1">打开 DSH Web GUI，进入「设置」</span></li>
+          <li><span class="n">2</span><span data-i18n="config.step2">切换到「插件」标签页，打开「插件配置」</span></li>
+          <li><span class="n">3</span><span data-i18n="config.step3">展开「Favicon indicator / 标签页图标指示器」卡片，逐状态编辑</span></li>
+        </ol>
+      </div>
+      <div class="mock reveal" aria-hidden="true">
+        <div class="mock-head">
+          <svg viewBox="0 0 50 50" style="color:#4D6BFE"><use href="#whale" /></svg>
+          <span data-i18n="config.mock.title">Favicon indicator</span>
+          <span class="sub" data-i18n="config.mock.sub">插件配置</span>
+        </div>
+        <div class="mock-row"><span class="dot" style="background:#1a1a1a"></span><span class="k">idle</span><span class="v">static · #1a1a1a</span></div>
+        <div class="mock-row"><span class="dot" style="background:#FACC15"></span><span class="k">running</span><span class="v">static · #FACC15</span></div>
+        <div class="mock-row"><span class="dot" style="background:#E5484D"></span><span class="k">asking</span><span class="v">blink · #E5484D ⇄ #FACC15 · 400ms</span></div>
+        <div class="mock-row"><span class="dot" style="background:#22A06B"></span><span class="k">done</span><span class="v">static · #22A06B</span></div>
+        <div class="mock-row"><span class="dot" style="background:#d6dade"></span><span class="k" data-i18n="config.mock.askhold">提问驻留</span><span class="v">3500 ms</span></div>
+        <div class="mock-row"><span class="dot" style="background:#d6dade"></span><span class="k" data-i18n="config.mock.donehold">完成驻留</span><span class="v">5000 ms</span></div>
+        <div class="mock-foot">
+          <span class="ok" data-i18n="config.mock.foot.ok">已保存</span>
+          <span data-i18n="config.mock.foot.path">写入 ~/.dsh/settings.yaml · 保存后 ~1s 生效，无需重启</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== how it works ===== -->
+  <section class="section alt" id="how">
+    <div class="container">
+      <div class="sec-head reveal">
+        <div class="sec-label" data-i18n="how.eyebrow">工作原理</div>
+        <h2 data-i18n="how.h2">轻量、健壮、零依赖</h2>
+      </div>
+      <div class="cards3">
+        <div class="how-card reveal">
+          <div class="cap" data-i18n="how.1.cap">ONE SVG, REBUILT PER FRAME</div>
+          <h3 data-i18n="how.1.title">一个模板，逐帧重绘</h3>
+          <p data-i18n="how.1.body">插件只附带一个 base.svg 模板；浏览器每帧把 __COLOR__ 占位符替换为状态色，再编码成 data:image/svg+xml URI。没有按颜色预制的图片文件，也没有多余的请求。</p>
+        </div>
+        <div class="how-card reveal">
+          <div class="cap" data-i18n="how.2.cap">JS-DRIVEN FRAMES</div>
+          <h3 data-i18n="how.2.title">全部动画由 JS 驱动</h3>
+          <p data-i18n="how.2.body">标签页里的 favicon 不播放 SVG 自带的 CSS 动画。插件用 requestAnimationFrame 每帧重建图标并替换 href；标签页转入后台时退回墙钟帧，动画不冻结，回到前台恢复全速。</p>
+        </div>
+        <div class="how-card reveal">
+          <div class="cap" data-i18n="how.3.cap">OFFLINE-SAFE BY DESIGN</div>
+          <h3 data-i18n="how.3.title">断线自愈，图标永不离场</h3>
+          <p data-i18n="how.3.body">状态端点每秒轮询一次，宿主重启后自动重连。宿主停止时标签页不会丢图标——启动时缓存的离线安全 data: URI 副本会接管，首次成功轮询即恢复实时图标。</p>
+        </div>
+      </div>
+      <p class="browser-note" data-i18n="how.browser">Chrome / Edge / Firefox 获得完整的实时颜色与特效；Safari 能渲染 SVG favicon，但动态更新受限（尽力而为）。</p>
+    </div>
+  </section>
+
+  <!-- ===== install ===== -->
+  <section class="section" id="install">
+    <div class="container">
+      <div class="sec-head reveal">
+        <div class="sec-label" data-i18n="install.eyebrow">开始使用</div>
+        <h2 data-i18n="install.h2">一条命令，装进 web profile</h2>
+      </div>
+      <div class="install-grid">
+        <div class="code-card reveal">
+          <h3 data-i18n="install.card1.title">从 npm 安装（推荐）</h3>
+          <p class="desc" data-i18n="install.card1.desc">标准 DSH bundle 插件，安装后 GUI / TUI profile 通过 cordis patch 层自动生效。</p>
+          <div class="code">
+            <span class="dollar">$</span>
+            <code>dsh plugin --profile web add dsh-web-icon-indicator@latest</code>
+            <button class="copy-btn" type="button" data-copy="dsh plugin --profile web add dsh-web-icon-indicator@latest" data-i18n="copy">复制</button>
+          </div>
+        </div>
+        <div class="code-card reveal">
+          <h3 data-i18n="install.card2.title">从 GitHub 源码安装</h3>
+          <p class="desc" data-i18n="install.card2.desc">直接跟踪仓库最新提交，适合开发与预览。</p>
+          <div class="code">
+            <span class="dollar">$</span>
+            <code>dsh plugin --profile web add github:waknow/dsh-web-icon-indicator</code>
+            <button class="copy-btn" type="button" data-copy="dsh plugin --profile web add github:waknow/dsh-web-icon-indicator" data-i18n="copy">复制</button>
+          </div>
+        </div>
+      </div>
+      <div class="install-note reveal">
+        <span class="badge-dsh">DSH ≥ 0.1.2</span>
+        <span data-i18n="install.note">需要 DSH ≥ 0.1.2（设置界面所需）。安装后打开 Web GUI → 设置 → 插件 → 插件配置，找到 Favicon indicator 卡片。</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== footer ===== -->
+  <footer class="footer">
+    <div class="container">
+      <div class="foot-cta">
+        <h2 data-i18n="foot.cta.title">加入 DSH 插件生态</h2>
+        <p data-i18n="foot.cta.sub">dsh-web-icon-indicator 是一个标准的 DSH bundle 插件——欢迎在 GitHub 提 Issue、发 PR，或者现在就把它装进你的 harness 里试试。</p>
+        <div class="foot-links">
+          <a class="btn btn-primary" href="https://github.com/waknow/dsh-web-icon-indicator" target="_blank" rel="noopener" data-i18n="hero.cta.github">查看 GitHub</a>
+          <a class="btn btn-ghost" href="https://www.npmjs.com/package/dsh-web-icon-indicator" target="_blank" rel="noopener">npm</a>
+          <a class="btn btn-ghost" href="https://github.com/waknow/dsh-web-icon-indicator/issues" target="_blank" rel="noopener">Issues</a>
+        </div>
+      </div>
+      <div class="foot-base">
+        <span class="brand-mini">
+          <svg viewBox="0 0 50 50" aria-hidden="true"><use href="#whale" /></svg>
+          <span>dsh-web-icon-indicator</span>
+          <span>·</span>
+          <span data-i18n="foot.baseline">为 DeepSeek Harness 构建 · 一切皆插件</span>
+        </span>
+        <span class="links">
+          <a href="https://github.com/waknow/dsh-web-icon-indicator" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://www.npmjs.com/package/dsh-web-icon-indicator" target="_blank" rel="noopener">npm</a>
+          <a href="https://github.com/waknow/dsh-web-icon-indicator/releases" target="_blank" rel="noopener">Releases</a>
+          <a href="https://github.com/awesome-dsh-plugin/awesome-dsh-plugin" target="_blank" rel="noopener">awesome-dsh-plugin</a>
+          <a href="https://www.deepseek.com/harness/" target="_blank" rel="noopener">DeepSeek Harness</a>
+          <span data-i18n="foot.license">以 MIT 许可发布</span>
+        </span>
+      </div>
+    </div>
+  </footer>
+
+  <noscript><p style="text-align:center;padding:16px;color:#6a7280">This page's live previews require JavaScript. / 本页的实时演示需要启用 JavaScript。</p></noscript>
+
+  <script src="main.js"></script>
+</body>
+</html>

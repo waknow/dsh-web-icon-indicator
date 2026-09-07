@@ -1,0 +1,51 @@
+# Deploys the plugin showcase site (docs/) to GitHub Pages.
+#
+# One-time setup: repo Settings → Pages → Build and deployment →
+# Source: "GitHub Actions". After that, every push to main (touching the site
+# or the shared diagram assets) republishes the site automatically.
+#
+# The site is plain static HTML/CSS/JS — no build step. The diagram asset
+# docs/assets/multi-agent-count.svg is re-copied from assets/ on deploy so it
+# can never go stale against the canonical file.
+name: Deploy site to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "assets/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Refresh shared diagram assets inside the site
+        run: |
+          mkdir -p docs/assets
+          cp assets/multi-agent-count.svg docs/assets/multi-agent-count.svg
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
