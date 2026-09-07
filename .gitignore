@@ -1,4 +1,5 @@
 node_modules/
+.agents/
 *.tgz
 *.log
 *.tsbuildinfo
