@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2](https://github.com/waknow/dsh-web-icon-indicator/compare/v0.4.1...v0.4.2) (2026-09-07)
+
+### Fixed
+
+* offline-safe restore keeps the tab icon alive when the DSH host stops ([217f741](https://github.com/waknow/dsh-web-icon-indicator/commit/217f7412bc7f1e2214bd50877b542e5d49257fd4))
+
 ## [0.4.1](https://github.com/waknow/dsh-web-icon-indicator/compare/v0.4.0...v0.4.1) (2026-09-04)
 
 ### Added
