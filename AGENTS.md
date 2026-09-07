@@ -181,7 +181,7 @@ loader hooks (`test/loader-hooks.mjs` + `test/stubs/`) stub the two
 fake Cordis ctx (state machine, `active` aggregation, approval/asking/done-hold,
 route shapes), and the injected browser script is extracted and executed in a
 `node:vm` with DOM/fetch/rAF stubs (whale vs full-frame count block, render-key
-transitions, effect fills, settings sync, poll-failure restore, legacy-host
+transitions, effect fills, settings sync, offline-safe poll-failure restore, legacy-host
 compat). Keep it passing when touching `lib/index.js` — it extracts the source,
 so it tests exactly what ships.
 
@@ -192,6 +192,7 @@ Additionally verify manually:
 3. End a turn → `done` icon for `doneHoldMs`, then back to `idle`.
 4. `curl` the status endpoint to confirm the aggregate `{ state, since, active, states }` JSON.
 5. With ≥2 agents active at once, the favicon must show the full-frame count block; back to the whale at ≤1.
+6. Stop the DSH host → the tab must NOT lose its icon (it shows the cached data-URI copy of the original favicon, or the last plugin frame); restart the host → the live icon returns within ~1 s without a tab reload.
 
 ## Constraints (do not break)
 
@@ -200,7 +201,7 @@ Additionally verify manually:
 - Keep `reconcile()` (runs on every status request against `agents.list()`) — `agent/status` idle delivery is not guaranteed at turn end.
 - Keep all animation in the browser script: favicons do not play SVG CSS animations, so every effect (`blink`, `breath`, `rainbow`, `heartbeat`, `bounce`, …) must be produced by JS rebuilding the data-URI each `requestAnimationFrame` tick and swapping the favicon `href`. Never add in-image SVG animation to `base.svg`. Browsers pause `requestAnimationFrame` in hidden tabs, so `apply()` paints the first frame synchronously (state changes show even while hidden) and the 1 s `poll()` repaints on unchanged states: animated states get a wall-clock frame (`ANIM_START` + `Date.now()` phase — coarse ≈ poll-rate background animation, full-speed rAF when visible), static states repaint (self-heal). Keep those fallback paths working when touching the animation loop.
 - Keep injection idempotent — guard on `window.__DSH_WEB_ICON_INDICATOR__` in both `webServer.tapIndex` and the injected script.
-- Keep the status poll alive across transient failures: the `poll()` catch restores the original icon and retries on the next tick — it must NEVER `clearInterval` on a fetch failure. The SPA reconnects in place across host restarts, so a dead poll would leave the tab without an icon until a manual refresh.
+- Keep the status poll alive across transient failures: the `poll()` catch performs an OFFLINE-SAFE restore once per outage and retries on every tick — it must NEVER `clearInterval` on a fetch failure. Offline-safe means: restore only `data:` URIs (the startup-cached copy of the original favicon, or the original href when it is itself a `data:` URI); when no copy exists, keep the last painted plugin frame. Never write the original server URL back — while the host is stopped that URL is unreachable and would blank the tab (the "icon lost after backend stops" bug). The SPA reconnects in place across host restarts, so the live icon returns on the first successful poll.
 - Keep the live config sync lossless: the status response echoes `states` (the resolved per-state visual config) and `syncCfg` swaps it in with a `PREV_STATE = null` repaint when the serialized value changes. It must stay inside the poll's `.then()` — never in the `.catch()` path — and a payload without `states` (older host) must leave the baked `__CFG__` untouched. `statusPath` / `iconPathPrefix` route paths are baked at registration, so changing those keys still requires a restart.
 - Keep the plugin host-plane only: mount via profile composition, never as a session-scoped agent preset.
 - Use the existing `sandboxPolicy` injection (currently unused) or remove it — do not leave it dangling without a note.

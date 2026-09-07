@@ -14,7 +14,8 @@
  *     __CFG__), and runs it in a node:vm with DOM / fetch / rAF stubs to
  *     assert favicon frames (whale vs full-frame count block), render-key
  *     transitions, effect-driven fills (blink / rainbow) on the count block,
- *     settings sync, poll-failure restore, and legacy-host compatibility.
+ *     settings sync, offline-safe poll-failure restore, and legacy-host
+ *     compatibility.
  *
  * No npm dependencies, no build step, no framework — plain `node`.
  */
@@ -496,7 +497,7 @@ function makeFakeLink(initialHref) {
 }
 
 class BrowserDriver {
-  constructor({ initialHref = "http://orig.example/favicon.ico", states = DEFAULT_STATES } = {}) {
+  constructor({ initialHref = "http://orig.example/favicon.ico", states = DEFAULT_STATES, withFileReader = false } = {}) {
     this.link = makeFakeLink(initialHref);
     this.rafQueue = [];
     this.pollFn = null;
@@ -526,6 +527,19 @@ class BrowserDriver {
         new Promise((resolve, reject) => {
           ctrl.queue.push({ url: String(url), resolve, reject });
         }),
+      // Optional Blob/FileReader stubs: let the original-icon capture path of
+      // the offline-safe restore run inside the VM (fetch -> blob -> data URI).
+      ...(withFileReader
+        ? {
+            Blob: class BlobStub {},
+            FileReader: class FileReaderStub {
+              readAsDataURL() {
+                this.result = "data:image/x-icon;base64,AAEC";
+                if (this.onload) this.onload();
+              }
+            },
+          }
+        : {}),
     });
     this.context = context;
     vm.runInContext(buildScript(states), context);
@@ -642,12 +656,40 @@ console.log("\n=== Part 2: browser injected script ===");
   });
   ok("B9b new state color applied", s.href.includes("123456") && !s.href.includes("FACC15"));
 
-  // B10 poll failure restores the original icon
+  // B10 outage with a server-URL original and NO cached copy (no FileReader
+  // in this driver): restore() must keep the last painted frame — writing the
+  // original URL would blank the tab, exactly the "backend stopped → icon
+  // lost" bug this guards against.
   const f = new BrowserDriver({ initialHref: "http://orig.example/favicon.ico" });
   await f.ready({ state: "running", active: 1, states: DEFAULT_STATES }); // paint something else
-  ok("B10a icon changed before failure", f.href.includes("data:image/svg+xml"));
+  const lastFrame = f.href;
+  ok("B10a icon painted before the failure",
+    lastFrame.includes("data:image/svg+xml") && lastFrame.includes("FACC15"), lastFrame.slice(0, 120));
   await f.pollFail();
-  ok("B10b original icon restored after failure", f.href === "http://orig.example/favicon.ico", f.href);
+  ok("B10b outage keeps the last painted icon", f.href === lastFrame, f.href);
+  ok("B10c dead server URL never written on failure", !f.href.includes("orig.example"), f.href);
+  await f.pollFail();
+  ok("B10d repeated failures stay stable (restore once per outage)", f.href === lastFrame, f.href);
+
+  // B12 the original icon is captured as a data-URI copy at startup, so an
+  // outage restores THAT (renderable without the host) instead of a dead URL.
+  const c = new BrowserDriver({ initialHref: "/favicon.svg", withFileReader: true });
+  // Startup order: captureOriginal's fetch + the initial poll, then the
+  // deferred base.svg fetch once apply() runs.
+  const origRes = { ok: true, status: 200, blob: async () => ({}) };
+  await c.pump((url) =>
+    url.includes("/base.svg") ? c.svgRes(BASE_SVG)
+    : url.includes("/favicon.svg") ? origRes
+    : c.statusRes({ state: "running", active: 1, states: DEFAULT_STATES })
+  );
+  await c.pump((url) => (url.includes("/base.svg") ? c.svgRes(BASE_SVG) : new Error("unexpected " + url)));
+  await tick();
+  ok("B12a plugin frame painted", c.href.includes("data:image/svg+xml") && c.href.includes("FACC15"),
+    c.href.slice(0, 120));
+  await c.pollFail();
+  ok("B12b outage restores the cached data-URI copy", c.href === "data:image/x-icon;base64,AAEC", c.href);
+  await c.pollFail();
+  ok("B12c repeated failures keep the restored icon stable", c.href === "data:image/x-icon;base64,AAEC", c.href);
 
   // B11 old-host payload (no states) leaves CFG untouched
   const g = new BrowserDriver();
