@@ -117,13 +117,16 @@ Or drop the directory into `~/.dsh/profiles/web/node_modules/<name>/` and ship a
 
 ## Configure
 
-All keys are optional; defaults shown.
+All keys are optional; defaults shown. `statusPath` and `iconPathPrefix` are
+**registration-time** keys: set them in the composition entry only — they are
+baked into the route table and the injected script when the plugin mounts, so
+they are intentionally **not** part of the settings surface (`settings.yaml`).
 
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `iconsDir` | `<package>/icons/` | Directory holding the single `base.svg` |
-| `statusPath` | `/dsh-web-icon-status.json` | JSON status endpoint |
-| `iconPathPrefix` | `/dsh-web-icon-indicator` | URL prefix `base.svg` is served under |
+| `statusPath` | `/dsh-web-icon-status.json` | JSON status endpoint — **registration-time (composition entry only)** |
+| `iconPathPrefix` | `/dsh-web-icon-indicator` | URL prefix `base.svg` is served under — **registration-time (composition entry only)** |
 | `askingHoldMs` | `3500` | Minimum visibility of the asking state |
 | `doneHoldMs` | `5000` | Time the done state stays before falling back to idle |
 | `states` | see below | Per-state visual config |
@@ -176,6 +179,15 @@ service under the `web-icon-indicator` namespace (a schemastery schema in
   colors / cycle) is synced into the running tab through the status poll within
   ~1 s. Only code-level default changes in `lib/index.js` need a tab reload (or
   a DSH web rebuild).
+- **Route paths are not settings.** `statusPath` / `iconPathPrefix` are
+  registration-time keys baked into the route table and the injected script, so
+  they live in the composition entry only (see the table above) and a restart is
+  required to change them. They are deliberately absent from the settings schema
+  and from `settings.yaml`: honoring them there would point the browser at a path
+  the server never serves.
+- The settings surface therefore covers `askingHoldMs`, `doneHoldMs`,
+  `iconsDir` and `states`. `iconsDir` has no schema default, so it is omitted
+  from the settings document unless a user sets it.
 - The browser half is a hand-written `lib/client.js` (ModuleLoader factory
   format — no build step, no runtime deps beyond the shell's `react`). The DSH
   client scanner picks a new `dsh.client` declaration up on the next profile
@@ -189,7 +201,7 @@ service under the `web-icon-indicator` namespace (a schemastery schema in
 - Status is aggregated across live `agents.list()` with priority `asking > running > done > idle`. The aggregation runs a `reconcile()` step on every request to detect running → idle transitions, because `agent/status`'s idle delivery is not guaranteed at turn end. The status endpoint also reports `active` — the number of non-idle agents — and while that count is **> 1** the injected script renders a full-frame count block (the *满幅数字* channel of [`demo/badge.html`](./demo/badge.html): a rounded block filled with the same per-frame state color/effect as the whale, bold white count sized 31%–52% of the icon, capped at `99+`) instead of the whale, so the tab shows how many agents are busy at once even in a pinned 16px tab.
 - `ask_user_question` tool calls (via `tools/pre-execute` / `tools/result`) flip the session into `asking` with a configurable minimum-hold so the icon stays visible even when the user answers immediately.
 - Permission / **sandbox-interception** waits are also surfaced as `asking`: when the agent hits a sandbox denial and escalates (`sandbox_permissions` + `justification`), or any other tool asks for approval, the approval service appends an `approval/asked` session event and blocks the agent until you decide. The plugin watches `session/event` (with an authoritative fold over the live session log as a fallback) and pins the session into the `asking` state for that whole wait, clearing it on `approval/decided`.
-- The browser script polls `/dsh-web-icon-status.json` once a second, fetches `base.svg` once, and then on every `requestAnimationFrame` tick rebuilds the favicon as a `data:image/svg+xml,…` URI — replacing the `__COLOR__` placeholder with the state's configured color and applying the state's configured effect. The status response also echoes the current per-state visual config, so a settings save reaches the running tab on the next poll (~1 s) without a reload. Browsers don't play favicon SVG CSS animations, so all motion is JS-driven. Because browsers pause `requestAnimationFrame` in hidden tabs, the poll also repaints a wall-clock frame for animated states, so background tabs keep animating (coarsely) instead of freezing; full-speed animation resumes when the tab is visible again. The poll also survives host restarts — and a stopped backend never blanks the tab: at startup the script caches an offline-safe `data:`-URI copy of the original favicon, and on a fetch failure it restores that copy (or, if none could be captured, keeps the last painted frame) — it never writes the original server URL back, which would be unreachable exactly while the host is down. It retries every tick, and the live icon returns on the first successful poll (the SPA reconnects in place, so no manual refresh is needed).
+- The browser script polls `/dsh-web-icon-status.json` once a second (the interval is fixed at 1000 ms in the injected script — it is not a config key), fetches `base.svg` once, and then on every `requestAnimationFrame` tick rebuilds the favicon as a `data:image/svg+xml,…` URI — replacing the `__COLOR__` placeholder with the state's configured color and applying the state's configured effect. The status response also echoes the current per-state visual config, so a settings save reaches the running tab on the next poll (~1 s) without a reload. Browsers don't play favicon SVG CSS animations, so all motion is JS-driven. Because browsers pause `requestAnimationFrame` in hidden tabs, the poll also repaints a wall-clock frame for animated states, so background tabs keep animating (coarsely) instead of freezing; full-speed animation resumes when the tab is visible again. The poll also survives host restarts — and a stopped backend never blanks the tab: at startup the script caches an offline-safe `data:`-URI copy of the original favicon, and on a fetch failure it restores that copy (or, if none could be captured, keeps the last painted frame) — it never writes the original server URL back, which would be unreachable exactly while the host is down. It retries every tick, and the live icon returns on the first successful poll (the SPA reconnects in place, so no manual refresh is needed).
 
 ## Browser support & known limitations
 

@@ -112,13 +112,15 @@ dsh plugin --profile web add <路径或tarball>
 
 ## 配置
 
-所有键均可选，默认值如下：
+所有键均可选，默认值如下。`statusPath` 与 `iconPathPrefix` 是**注册期**键：
+只能在合成条目（composition entry）里设置——它们在插件挂载时就被烘进路由表与注入
+脚本，因此刻意**不**进入设置面（`settings.yaml`）。
 
 | 键 | 默认值 | 含义 |
 | --- | --- | --- |
 | `iconsDir` | `<package>/icons/` | 单个 `base.svg` 所在目录 |
-| `statusPath` | `/dsh-web-icon-status.json` | JSON 状态端点 |
-| `iconPathPrefix` | `/dsh-web-icon-indicator` | `base.svg` 的 URL 前缀 |
+| `statusPath` | `/dsh-web-icon-status.json` | JSON 状态端点 —— **注册期（仅合成条目）** |
+| `iconPathPrefix` | `/dsh-web-icon-indicator` | `base.svg` 的 URL 前缀 —— **注册期（仅合成条目）** |
 | `askingHoldMs` | `3500` | 提问状态的最小保持时长 |
 | `doneHoldMs` | `5000` | 完成状态保持时长，随后回到 idle |
 | `states` | 见下 | 每个状态的视觉配置 |
@@ -167,6 +169,12 @@ config:
   `doneHoldMs` 在主机侧即时生效；各状态的视觉配置（特效 / 颜色 / 周期）会随状态
   轮询同步进正在运行的标签页，约 1 秒内生效。只有改 `lib/index.js` 里的代码级
   默认值才需要重载标签页（或重新构建 DSH Web）。
+- **路由路径不是设置项。** `statusPath` / `iconPathPrefix` 是注册期键，已被烘进
+  路由表与注入脚本，因此只存在于合成条目（见上方表格），改动需要重启。它们刻意
+  不在设置 schema 与 `settings.yaml` 中：若在那里生效，浏览器会去请求服务器根本
+  没有提供的路径。
+- 因此设置面覆盖 `askingHoldMs`、`doneHoldMs`、`iconsDir` 与 `states`。
+  `iconsDir` 没有 schema 默认值，用户未设置时不会出现在设置文档中。
 - 浏览器半区是手写的 `lib/client.js`（ModuleLoader factory 格式——无构建步骤、
   无额外运行期依赖，仅用 shell 自带的 `react`）。DSH 客户端扫描器会在下次启动
   profile 时识别新的 `dsh.client` 声明。
@@ -178,7 +186,7 @@ config:
 - 状态按 `agents.list()` 聚合，优先级 `asking > running > done > idle`。每次请求都会执行一次 `reconcile()` 检测 running → idle 的转换，因为 `agent/status` 的 idle 事件在回合结束时并不保证送达。状态端点还会上报 `active`——非待机 agent 数——当该数 **> 1** 时，注入脚本改为渲染占满整帧的数字块（[`demo/badge.html`](./demo/badge.html) 的「满幅数字」通道：圆角色块，填充色与鲸鱼同源的逐帧状态色/特效，白色粗体数字约占图标高度 31%–52%，上限 `99+`），而不是鲸鱼，这样即使在 16px 的固定标签页里也能一眼看出同时有几个 agent 在忙。
 - `ask_user_question` 工具调用（通过 `tools/pre-execute` / `tools/result`）把会话置为 `asking`，带可配置的最小保持时长，即使你立刻回答，图标也会保持可见。
 - 权限 / **沙箱拦截**等待同样会显示为 `asking`：当 agent 命中沙箱拒绝并请求提权（`sandbox_permissions` + `justification`），或其他工具需要征得同意时，审批服务会先写入一条 `approval/asked` 会话事件并阻塞 agent，直到你做出决定。插件监听 `session/event`（并以实时会话日志的权威折叠作为兜底）在整个等待期间将会话置为 `asking` 状态，收到 `approval/decided` 后清除。
-- 浏览器脚本每秒轮询 `/dsh-web-icon-status.json`，首次获取 `base.svg`，然后每个 `requestAnimationFrame` 周期把 favicon 重建为 `data:image/svg+xml,…` URI——把 `__COLOR__` 占位符替换为状态配置的颜色，并应用该状态配置的特效。状态响应还会携带当前的每状态视觉配置，因此设置保存后约 1 秒内（下一个轮询 tick）即同步到已打开的标签页，无需刷新。浏览器不会播放 SVG favicon 的 CSS 动画，所以一切动画都由 JS 驱动。由于浏览器在**隐藏（后台）标签页会暂停 `requestAnimationFrame`**，轮询还会为动画态补绘一帧按墙钟时间计算的画面——后台标签页保持粗粒度动画（约每 1 秒）而不会冻结，切回前台后恢复满速动画。轮询还能**扛住 host 重启 / 后端停止**：启动时会把原始 favicon 缓存为离线安全的 `data:`-URI 副本，请求失败时还原该副本（副本未取到则保留最后一帧插件图标）——绝不写回原始的服务端 URL（后端停止时它恰恰不可达，写回正是「图标丢失」的根因）；每个 tick 持续重试，端点恢复后第一个成功轮询即换回实时图标（SPA 原地重连，无需手动刷新）。
+- 浏览器脚本每秒轮询 `/dsh-web-icon-status.json`（轮询间隔在注入脚本里固定为 1000 ms，不是配置项），首次获取 `base.svg`，然后每个 `requestAnimationFrame` 周期把 favicon 重建为 `data:image/svg+xml,…` URI——把 `__COLOR__` 占位符替换为状态配置的颜色，并应用该状态配置的特效。状态响应还会携带当前的每状态视觉配置，因此设置保存后约 1 秒内（下一个轮询 tick）即同步到已打开的标签页，无需刷新。浏览器不会播放 SVG favicon 的 CSS 动画，所以一切动画都由 JS 驱动。由于浏览器在**隐藏（后台）标签页会暂停 `requestAnimationFrame`**，轮询还会为动画态补绘一帧按墙钟时间计算的画面——后台标签页保持粗粒度动画（约每 1 秒）而不会冻结，切回前台后恢复满速动画。轮询还能**扛住 host 重启 / 后端停止**：启动时会把原始 favicon 缓存为离线安全的 `data:`-URI 副本，请求失败时还原该副本（副本未取到则保留最后一帧插件图标）——绝不写回原始的服务端 URL（后端停止时它恰恰不可达，写回正是「图标丢失」的根因）；每个 tick 持续重试，端点恢复后第一个成功轮询即换回实时图标（SPA 原地重连，无需手动刷新）。
 
 ## 浏览器支持与已知限制
 

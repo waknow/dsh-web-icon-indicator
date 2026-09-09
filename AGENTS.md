@@ -28,7 +28,7 @@ The DSH platform this plugin runs on lives at **https://github.com/deepseek-ai/d
 | `cordis.patch.yml` | Install patch that inserts the plugin row into the profile composition | Referenced by `package.json` → `dsh.bundle.patch` |
 | `README.md` / `README.zh.md` | User docs (EN / zh) | Update both on any behavior/config/icon change |
 | `screenshots.json` | Marketplace storefront screenshots (1–8 image paths, relative to the file, in-repo only) | Read by the awesome-dsh-plugin nightly build & dsh-market detail view; see *Declare or change marketplace screenshots* |
-| `package.json` | Metadata, `exports` (incl. `./client`), `dsh.client` declaration, `engines.dsh` (declared DSH host floor — see *Declare/change the DSH host requirement*), `peerDependencies` (`@deepseek-ai/schemastery`), `files` allowlist (incl. `screenshots.json`), `scripts` (`release*` → `commit-and-tag-version`), `devDependencies` (`commit-and-tag-version`) | Release scripts — see *Release* |
+| `package.json` | Metadata, `exports` (incl. `./client`), `dsh.client` declaration, `engines.dsh` (declared DSH host floor — see *Declare/change the DSH host requirement*), `peerDependencies` (`@deepseek-ai/schemastery`), `files` allowlist (`lib`, `icons`, `assets`, `test`, `screenshots.json`, docs, LICENSE — `docs/` and `demo/` are repo-only), `scripts` (`release*` → `commit-and-tag-version`), `devDependencies` (`commit-and-tag-version`) | Release scripts — see *Release*; `test/` ships so `npm test` works from the tarball |
 | `.github/workflows/publish.yml` | CI: publishes to npm on `v*` tags via **OIDC trusted publishing** (no token secret; `npm ci` + optional test/build, then `npm publish`) | Keeps the release flow hands-off — see *Release* |
 | `.github/workflows/pages.yml` | CI: deploys the `docs/` showcase site to GitHub Pages on pushes touching `docs/**` / `assets/**` (static, no build; re-copies `assets/multi-agent-count.svg` into `docs/assets/` before upload) | One-time setup: repo Settings → Pages → Source: **GitHub Actions** — see *Publish the GitHub Pages site* |
 | `docs/` | GitHub Pages showcase site: `index.html` + `style.css` + `main.js` (bilingual zh/en, zero-build) plus `safari-favicon-research.md`; `docs/assets/` holds `favicon.svg` (generated from `icons/base.svg`) and a deploy-refreshed copy of `assets/multi-agent-count.svg` | The site's whale renderer is a hand-port of the injected script — keep them in sync, see *Publish the GitHub Pages site* |
@@ -36,7 +36,7 @@ The DSH platform this plugin runs on lives at **https://github.com/deepseek-ai/d
 ## Code style & conventions
 
 - ESM only (`"type": "module"`); the only runtime dependency is `@deepseek-ai/schemastery` (config schema), declared as a `peerDependency` per the awesome-dsh-plugin contributing guide — keep it that way. The host provides the `settings` service (and `@deepseek-ai/dsh-settings` is NOT imported by either half anymore — the plugin attaches its section through `ctx.inject(["settings"], …)`).
-- Plugin contract: default export `{ name, inject, config, apply(ctx, config), SETTINGS_NAMESPACE, CONFIG_SCHEMA }`; `inject` = `webServer, timer, agents, fs, sandboxPolicy`. Cordis passes the resolved composition config as the second argument to `apply`.
+- Plugin contract: default export `{ name, inject, config, apply(ctx, config), SETTINGS_NAMESPACE, CONFIG_SCHEMA }`; `inject` = `webServer, timer, agents, fs`. Cordis passes the resolved composition config as the second argument to `apply`.
 - All session state lives in module-scope Maps/Sets keyed by agent id: `states`, `asking`, `askDone`, `askTimers`, `lastSeen` (see `lib/index.js`).
 - The browser script is the `INJECTED_SCRIPT` template string, injected via `webServer.tapIndex`; config flows in through placeholder tokens (`__STATUS_PATH__`, `__BASE_PATH__`, `__CFG__`), each paired with a `.replace()` call in `apply()` (rebuilt by the settings `onChange` hook — the injected script is a `let`, so the next page load picks up settings edits). `__CFG__` carries the `{ states }` object as JSON, where each state is `{ effect, colors[], speed? }`.
 - The config surface is registered with the DSH settings service (`web-icon-indicator` namespace). `CONFIG_SCHEMA` defaults must mirror `DEFAULTS`; `ctx.inject(["settings"], (settingsCtx) => settingsCtx.settings.installSection(ctx, SETTINGS_NAMESPACE, CONFIG_SCHEMA, entry, { setSource, onChange }))` in `apply()` wires the composition entry as `base` and `source()` as the live config (the callback never fires when no settings provider is composed, so the plugin keeps working on its composition entry + DEFAULTS).
@@ -72,6 +72,11 @@ The rules below pin its requirements to this repo; follow them on any settings-c
   `value`, composition `base`, and raw `user`; a field counts as overridden by
   key **presence** in `user`, never by a value comparison. `scope.set(field, value)`
   stores one field; `scope.unset(field)` clears it back to the composition layer.
+  A card save is ONE edit, so it goes through `scope.mutate(ops)` with
+  `{ op: "set"|"unset", path: [field], value? }` — every op then shares one
+  revision fence, one validation pass, one persistence decision and one recovery
+  read (the contract's atomic namespace mutation). Only the explicit reset uses
+  `scope.unset` per key.
 - **Slot registration shape** (in `apply()`): `ctx.slots.register({ name:
   "settings.plugin.item", key: NS, locale: LOCALE, inject: () => ({ scope, t }) },
   IconConfigCard)`. The tab dispatches one slot key per served namespace, so a
@@ -86,15 +91,15 @@ The rules below pin its requirements to this repo; follow them on any settings-c
 ## Workflows
 
 ### Change the icon, a color, an effect, or a timing
-1. Icon geometry: edit `icons/base.svg` (keep the `__COLOR__` placeholder in `#p { fill: … }`). Colors/effects/timings: edit `DEFAULTS` in `lib/index.js` — `states.<state>` entries (`effect` / `colors[]` / `speed`), plus `askingHoldMs` / `doneHoldMs` — and keep the corresponding `CONFIG_SCHEMA` defaults in sync (settings validation + the settings-page card read from it).
+1. Icon geometry: edit `icons/base.svg` (keep the `__COLOR__` placeholder in `#p { fill: … }`). Colors/effects/timings: edit `DEFAULTS` in `lib/index.js` — `states.<state>` entries (`effect` / `colors[]` / `speed`), plus `askingHoldMs` / `doneHoldMs` — and keep the corresponding `CONFIG_SCHEMA` defaults in sync (settings validation + the settings-page card read from it). `statusPath` / `iconPathPrefix` are in `DEFAULTS` but deliberately NOT in `CONFIG_SCHEMA` (see *Constraints*).
 2. No server restart needed for the icon: `base.svg` is re-read per request and the browser re-fetches it with cache-busting (`?t=Date.now()`). Color/effect/timing changes **saved through the settings card** reach the running tab via the status poll within ~1 s (no reload); changing the code-level `DEFAULTS` in `lib/index.js` still requires re-injecting the script (reload the tab) or a DSH web rebuild.
 3. If defaults/keys changed: update the config tables in **both** READMEs, `lib/types/index.d.ts`, and — when the card exposes the key — the field in `lib/client.js`.
 
 ### Change the settings card (fields, labels, save/reset)
 0. Stay inside the [Settings card contract](#settings-card-contract-cookbook): the `web-icon-indicator` join key, the `settings.plugin.item` registration shape, the purity gate (no value imports of chrome/form model), and write-through-`ctx.settingsScope` staging.
-1. Edit `lib/client.js`: the `IconConfigCard` component + the `en`/`zh` dictionaries. The card reads the scope snapshot (`status/writable/value/base/user`) and writes via `scope.set(field, value)` / `scope.unset(field)`.
+1. Edit `lib/client.js`: the `IconConfigCard` component + the `en`/`zh` dictionaries. The card reads the scope snapshot (`status/writable/value/base/user`) and writes via `scope.mutate(ops)` (one atomic namespace mutation per save) / `scope.unset(field)` (reset).
 2. No build step: the file is served as-is at `/plugins/dsh-web-icon-indicator/client.js`. A NEW `dsh.client` declaration (or a first-time `lib/client.js`) is only scanned at profile start; content changes to an existing bundle are re-hashed by HMR.
-3. Verify with the SSR smoke test pattern (mock `window.__ModuleLoader__`, run the factory with stubbed `require("react")` and `require("@deepseek-ai/dsh-client-ui-primitives")`, render the card via `react-dom/server`).
+3. Covered by Part 6 of `test/verify.js`: the bundle is loaded through a fake `window.__ModuleLoader__` and its factory run with hand-rolled `react` + primitives stubs, asserting the slot registration, the rendered card, and the exact scope writes (no `react-dom` dependency, so no `react-dom/server`).
 
 ### Add a new state (e.g. `error`)
 1. Add a `states.<newstate>` default (`effect` / `colors[]` / `speed`) in `DEFAULTS` in `lib/index.js`. No new SVG is needed — every state renders from `base.svg`.
@@ -201,14 +206,25 @@ the repo root and browse to `/docs/` — every reference is relative.
 
 Automated verification lives in `test/verify.js` — a zero-dependency, zero-build
 plain-Node script (`npm test` or `node test/verify.js`). It runs the REAL code:
-loader hooks (`test/loader-hooks.mjs` + `test/stubs/`) stub the two
-`@deepseek-ai/*` peer imports so the host plugin's `apply()` can be driven with a
-fake Cordis ctx (state machine, `active` aggregation, approval/asking/done-hold,
-route shapes), and the injected browser script is extracted and executed in a
-`node:vm` with DOM/fetch/rAF stubs (whale vs full-frame count block, render-key
-transitions, effect fills, settings sync, offline-safe poll-failure restore, legacy-host
-compat). Keep it passing when touching `lib/index.js` — it extracts the source,
-so it tests exactly what ships.
+
+- **Host half** — loader hooks (`test/loader-hooks.mjs` + `test/stubs/`) stub the
+  `@deepseek-ai/schemastery` peer import so the host plugin's `apply()` can be
+  driven with a fake Cordis ctx (state machine, `active` aggregation,
+  approval/asking/done-hold, incremental `snapshotEvents` fold, route shapes).
+- **Injected browser script** — extracted from the template and executed in a
+  `node:vm` with DOM/fetch/rAF/AbortController stubs (whale vs full-frame count
+  block, render-key transitions, every effect including `heartbeat` / `bounce` /
+  `breath`, hidden-tab repaint, settings sync, offline-safe poll-failure restore,
+  abort/deadline recovery, legacy-host compat).
+- **Browser half** — `lib/client.js` is loaded through a fake
+  `window.__ModuleLoader__` and its factory is run with hand-rolled `react` +
+  `@deepseek-ai/dsh-client-ui-primitives` stubs (no dependencies, no build step):
+  loader contract, slot registration shape, card render, staged edits and the
+  single atomic `scope.mutate` write, reset.
+
+Keep it passing when touching `lib/index.js` or `lib/client.js` — it extracts the
+source, so it tests exactly what ships. `demo/badge.html` is repo-only, so its
+two syntax checks skip gracefully when the script runs from a published tarball.
 
 Additionally verify manually:
 
@@ -229,7 +245,7 @@ Additionally verify manually:
 - Keep the status poll alive across transient failures: the `poll()` catch performs an OFFLINE-SAFE restore once per outage and retries on every tick — it must NEVER `clearInterval` on a fetch failure. Offline-safe means: restore only `data:` URIs (the startup-cached copy of the original favicon, or the original href when it is itself a `data:` URI); when no copy exists, keep the last painted plugin frame. Never write the original server URL back — while the host is stopped that URL is unreachable and would blank the tab (the "icon lost after backend stops" bug). The SPA reconnects in place across host restarts, so the live icon returns on the first successful poll.
 - Keep the live config sync lossless: the status response echoes `states` (the resolved per-state visual config) and `syncCfg` swaps it in with a `PREV_STATE = null` repaint when the serialized value changes. It must stay inside the poll's `.then()` — never in the `.catch()` path — and a payload without `states` (older host) must leave the baked `__CFG__` untouched. `statusPath` / `iconPathPrefix` route paths are baked at registration, so changing those keys still requires a restart.
 - Keep the plugin host-plane only: mount via profile composition, never as a session-scoped agent preset.
-- Use the existing `sandboxPolicy` injection (currently unused) or remove it — do not leave it dangling without a note.
+- Keep `statusPath` / `iconPathPrefix` OUT of `CONFIG_SCHEMA`: they are baked into the route table and the injected script at registration time, so a settings-document change could never be honored (the browser would poll a path the server does not serve). They are composition-entry only; the settings surface covers `askingHoldMs`, `doneHoldMs`, `iconsDir`, `states`.
 - Don't break the settings-card contract (see *Settings card contract (cookbook)*): the `web-icon-indicator` join key, the `settings.plugin.item` registration shape, the bundle-purity gate (never value-import `PluginCard` / `CardForm` / `fields` from `@deepseek-ai/dsh-client-ui-settings-plugins`), and staging writes through `ctx.settingsScope`.
 
 ## Do NOT
