@@ -123,15 +123,20 @@ function makeCtx() {
     },
     timer: {
       timeout: (cb, ms) => {
-        const t = { cb, ms, fired: false, ran: false };
+        const t = { cb, ms, fired: false, ran: false, running: false };
         t.cb = () => {
           t.ran = true; // executed (vs cancelled via the disposer -> fired)
-          return cb();
+          t.running = true;
+          try { return cb(); } finally { t.running = false; }
         };
+        // The disposer mirrors the real `ctx.timer.timeout` return value; the
+        // `__test` back-reference lets assertions read the timer's own flags.
+        const disposer = () => { t.fired = true; };
+        disposer.running = () => t.running;
+        disposer.__test = t;
+        t.disposer = disposer;
         timers.push(t);
-        return () => {
-          t.fired = true;
-        };
+        return disposer;
       },
     },
     on: (ev, fn) => {
@@ -183,13 +188,23 @@ const { default: plugin } = await import(new URL("../lib/index.js", import.meta.
   // H1 contract shape
   ok("H1 plugin contract shape", plugin && plugin.name === "dsh-web-icon-indicator",
     "name=" + plugin?.name);
-  eq("H1b inject list", plugin.inject, ["webServer", "timer", "agents", "fs", "sandboxPolicy"]);
+  eq("H1b inject list", plugin.inject, ["webServer", "timer", "agents", "fs"]);
   ok("H1c config defaults present",
     plugin.config.askingHoldMs === 3500 && plugin.config.doneHoldMs === 5000 &&
     plugin.config.states?.running?.colors?.[0] === "#FACC15",
     JSON.stringify(plugin.config));
   ok("H1d SETTINGS_NAMESPACE", plugin.SETTINGS_NAMESPACE === "web-icon-indicator");
   ok("H1e CONFIG_SCHEMA defined", !!plugin.CONFIG_SCHEMA);
+  // The route paths are registration-time only: the settings schema must not
+  // advertise them, or a settings-document edit would point the browser at a
+  // path the server never serves.
+  const schemaSrc = SRC.slice(SRC.indexOf("const CONFIG_SCHEMA"), SRC.indexOf("/** Browser script injected"));
+  ok("H1e2 settings schema excludes the registration-time route paths",
+    !/\bstatusPath\s*:/.test(schemaSrc) && !/\biconPathPrefix\s*:/.test(schemaSrc),
+    schemaSrc.slice(0, 120));
+  ok("H1e3 settings schema covers the live keys",
+    /askingHoldMs\s*:/.test(schemaSrc) && /doneHoldMs\s*:/.test(schemaSrc) &&
+    /iconsDir\s*:/.test(schemaSrc) && /states\s*:/.test(schemaSrc));
 
   const h = makeCtx();
   plugin.apply(h.ctx);
@@ -232,12 +247,25 @@ const { default: plugin } = await import(new URL("../lib/index.js", import.meta.
     { state: agg.state, active: agg.active }, { state: "running", active: 2 });
 
   // H5 pending approval (hasPendingApproval real fold) raises priority + counts
+  // The stub mirrors the real contract: events carry a `seq` and
+  // `snapshotEvents(fromSeq)` returns only the delta from that offset, so the
+  // incremental cursor is exercised rather than a full re-read.
+  const approvalLog = (events) => {
+    const log = events.map((ev, i) => ({ ...ev, seq: i }));
+    return {
+      log,
+      reads: 0,
+      session: {
+        snapshotEvents: (fromSeq) => {
+          const start = typeof fromSeq === "number" ? fromSeq : 0;
+          return log.filter((ev) => ev.seq >= start);
+        },
+      },
+    };
+  };
+  const pendingLog = approvalLog([{ type: "approval/asked", data: { id: "p1" } }]);
   h.setAgents([
-    {
-      id: "A",
-      status: "running",
-      session: { snapshotEvents: () => [{ type: "approval/asked", data: { id: "p1" } }] },
-    },
+    { id: "A", status: "running", session: pendingLog.session },
     { id: "B", status: "running" },
   ]);
   agg = aggregate();
@@ -245,22 +273,48 @@ const { default: plugin } = await import(new URL("../lib/index.js", import.meta.
     { state: agg.state, active: agg.active }, { state: "asking", active: 2 });
 
   // H6 approval/decided clears the pin
+  const decidedLog = approvalLog([
+    { type: "approval/asked", data: { id: "p1" } },
+    { type: "approval/decided", data: { id: "p1" } },
+  ]);
   h.setAgents([
-    {
-      id: "A",
-      status: "running",
-      session: {
-        snapshotEvents: () => [
-          { type: "approval/asked", data: { id: "p1" } },
-          { type: "approval/decided", data: { id: "p1" } },
-        ],
-      },
-    },
+    { id: "A", status: "running", session: decidedLog.session },
     { id: "B", status: "running" },
   ]);
   agg = aggregate();
   eq("H6 approval decided -> running active 2",
     { state: agg.state, active: agg.active }, { state: "running", active: 2 });
+
+  // H6b the fold is incremental: the second poll must ask for the delta only,
+  // and a later `approval/asked` appended to the log must still pin the agent.
+  // Uses a fresh agent id: the cursor is per agent, and "A" already folded a
+  // different log above.
+  const growing = [];
+  const readRanges = [];
+  h.setAgents([
+    {
+      id: "G",
+      status: "running",
+      session: {
+        snapshotEvents: (fromSeq) => {
+          const start = typeof fromSeq === "number" ? fromSeq : 0;
+          readRanges.push(start);
+          return growing.filter((ev) => ev.seq >= start);
+        },
+      },
+    },
+  ]);
+  growing.push({ type: "approval/asked", data: { id: "p1" }, seq: 0 });
+  aggregate();
+  eq("H6b first read starts at 0", readRanges[0], 0);
+  aggregate();
+  eq("H6c second read starts past the seen event", readRanges[1], 1);
+  growing.push({ type: "approval/decided", data: { id: "p1" }, seq: 1 });
+  agg = aggregate();
+  eq("H6d delta-only fold clears the pin", agg.state, "running");
+  growing.push({ type: "approval/asked", data: { id: "p2" }, seq: 2 });
+  agg = aggregate();
+  eq("H6e appended ask still pins", agg.state, "asking");
 
   // H7 session/event handler pinning (approval/asked event drives setState)
   h.setAgents([{ id: "A", status: "running" }]);
@@ -348,6 +402,17 @@ const { default: plugin } = await import(new URL("../lib/index.js", import.meta.
   emit(h.onHandlers, "tools/pre-execute", { name: "ask_user_question", agent: { id: "B" } }, () => {});
   const askTimer2 = h.timers[h.timers.length - 1];
   ok("H14c ask hold timer uses new 100ms", askTimer2.ms === 100, "ms=" + askTimer2.ms);
+
+  // H14d/H14e an `undefined` value in the settings source must not shadow a
+  // DEFAULTS entry, and a settings edit must not move the baked route paths.
+  opts.setSource(() => ({ askingHoldMs: undefined, iconsDir: undefined, statusPath: "/ignored.json" }));
+  opts.onChange();
+  const res14 = fakeRes();
+  statusRoute.handler(null, res14);
+  const agg14 = JSON.parse(res14.body);
+  ok("H14d resolved config still serves all four default states", Object.keys(agg14.states).length === 4,
+    JSON.stringify(Object.keys(agg14.states)));
+  ok("H14e status route path unchanged by settings", statusRoute.path === "/dsh-web-icon-status.json");
 }
 
 {
@@ -364,7 +429,6 @@ const { default: plugin } = await import(new URL("../lib/index.js", import.meta.
     return JSON.parse(res.body);
   };
   const liveTimers = () => h2.timers.filter((t) => !t.fired && !t.ran);
-
   // H15 agent/status running (event-driven) -> running
   h2.setAgents([{ id: "A", status: "running" }]);
   emit(h2.onHandlers, "agent/status", { agent: { id: "A" }, status: "running" });
@@ -473,6 +537,44 @@ const { default: plugin } = await import(new URL("../lib/index.js", import.meta.
   eq("H23c disposed -> idle active 0", { state: agg.state, active: agg.active }, { state: "idle", active: 0 });
 }
 
+{
+  // H24 the asking pin must still be releasable after a re-arm followed by a
+  // second pre-execute. Regression: scheduleAskCheck cancelled the stored handle
+  // unconditionally, so a pre-execute arriving while the callback was executing
+  // its re-arm path killed the fresh handle — the session stayed pinned to
+  // `asking` forever (nothing left to release it).
+  const h3 = makeCtx();
+  plugin.apply(h3.ctx);
+  const statusRoute3 = h3.routes.find((r) => r.kind === "exact");
+  const aggregate3 = () => {
+    const res = fakeRes();
+    statusRoute3.handler(null, res);
+    return JSON.parse(res.body);
+  };
+  const state3 = () => { const a = aggregate3(); return { state: a.state, active: a.active }; };
+
+  h3.setAgents([{ id: "E", status: "running" }]);
+  emit(h3.onHandlers, "agent/status", { agent: { id: "E" }, status: "running" });
+  emit(h3.onHandlers, "tools/pre-execute", { name: "ask_user_question", agent: { id: "E" } }, () => {});
+  eq("H24a ask pinned", state3(), { state: "asking", active: 1 });
+
+  h3.timers.at(-1).cb(); // no result yet + still running -> re-arm
+  eq("H24b still asking after re-arm", state3(), { state: "asking", active: 1 });
+
+  // Second ask_user_question while the re-armed timer is pending.
+  emit(h3.onHandlers, "tools/pre-execute", { name: "ask_user_question", agent: { id: "E" } }, () => {});
+  eq("H24c still asking after second pre-execute", state3(), { state: "asking", active: 1 });
+
+  // The tool finally returns: SOME pending timer must be able to release the
+  // pin. Every handle created for this agent is exercised, so a fix that left
+  // only dead handles behind fails here.
+  emit(h3.onHandlers, "tools/result", { name: "ask_user_question", agent: { id: "E" } }, {});
+  const pending = h3.timers.filter((t) => !t.ran && !t.fired);
+  ok("H24d at least one pending hold timer survived", pending.length >= 1, "pending=" + pending.length);
+  for (const t of pending) t.cb();
+  eq("H24e hold expiry after answer -> running", state3(), { state: "running", active: 1 });
+}
+
 // ============================================================================
 // PART 2 — browser injected script (real template, VM + DOM/fetch/rAF stubs)
 // ============================================================================
@@ -502,6 +604,8 @@ class BrowserDriver {
     this.rafQueue = [];
     this.pollFn = null;
     this.queue = [];
+    this.aborts = []; // AbortController stubs handed to fetch, in request order
+    this.pendingTimeouts = []; // armed fetch-deadline callbacks (never auto-fired)
     const ctrl = this;
     const context = vm.createContext({
       window: { __DSH_WEB_ICON_INDICATOR__: false, addEventListener() {} },
@@ -523,9 +627,24 @@ class BrowserDriver {
       cancelAnimationFrame: () => {
         ctrl.rafQueue.length = 0; // a new loop invalidates any stale steps
       },
-      fetch: (url) =>
+      // Minimal AbortController so the script's deadline-bounded fetch path runs
+      // inside the VM; tests can drive abort() through d.aborts[i].
+      AbortController: class {
+        constructor() {
+          this.signal = { aborted: false };
+          ctrl.aborts.push(this);
+        }
+        abort() {
+          this.signal.aborted = true;
+        }
+      },
+      // Timer stubs for the script's fetch deadline: the tests never wait 8 s,
+      // they drive the abort through d.aborts[i].abort() instead.
+      setTimeout: (fn) => { ctrl.pendingTimeouts.push(fn); return ctrl.pendingTimeouts.length; },
+      clearTimeout: (id) => { if (id) ctrl.pendingTimeouts[id - 1] = null; },
+      fetch: (url, init) =>
         new Promise((resolve, reject) => {
-          ctrl.queue.push({ url: String(url), resolve, reject });
+          ctrl.queue.push({ url: String(url), resolve, reject, signal: init && init.signal });
         }),
       // Optional Blob/FileReader stubs: let the original-icon capture path of
       // the offline-safe restore run inside the VM (fetch -> blob -> data URI).
@@ -697,6 +816,91 @@ console.log("\n=== Part 2: browser injected script ===");
   ok("B11a number before legacy payload", g.href.includes(">2<"));
   await g.poll({ state: "running", active: 2 }); // no states -> older host
   ok("B11b old-host poll keeps frames", g.href.includes(">2<"));
+
+  // B13 geometric effects wrap the whale in a <g transform> (previously
+  // untested: heartbeat and bounce were only ever exercised in the demo page).
+  const hbStates = { ...DEFAULT_STATES, running: { effect: "heartbeat", colors: ["#FACC15"], speed: 1200 } };
+  const hb = new BrowserDriver({ states: hbStates });
+  await hb.ready({ state: "running", active: 1, states: hbStates });
+  hb.raf(100); // t=0 -> outside the lub-dub window, scale 1
+  ok("B13a heartbeat wraps the whale in a scale group",
+    hb.href.includes('<g transform="translate(27.889625 24.95264) scale(1) translate(-27.889625 -24.95264)">') &&
+    hb.href.includes("</g></svg>") && hb.href.includes("FACC15"),
+    hb.href.slice(0, 200));
+  hb.raf(160); // t=60ms -> 0.05 of the cycle -> first beat, scale > 1
+  ok("B13b heartbeat beats inside the first window",
+    /scale\(1\.\d+\)/.test(hb.href) && parseFloat(/scale\((1\.\d+)\)/.exec(hb.href)[1]) > 1.05,
+    (hb.href.match(/scale\([^)]*\)/) || ["none"])[0]);
+
+  const boStates = { ...DEFAULT_STATES, running: { effect: "bounce", colors: ["#22A06B"], speed: 1200 } };
+  const bo = new BrowserDriver({ states: boStates });
+  await bo.ready({ state: "running", active: 1, states: boStates });
+  bo.raf(100);
+  ok("B13c bounce wraps the whale in a translate group",
+    /<g transform="translate\(0 -?0\.\d+\)">/.test(bo.href) && bo.href.includes("22A06B"),
+    (bo.href.match(/<g transform="[^"]*"/) || ["none"])[0]);
+  bo.raf(312); // quarter of a 1.6-cycle -> maximum lift
+  ok("B13d bounce lifts the whale", /translate\(0 -[1-9]/.test(bo.href), bo.href.slice(0, 200));
+
+  // B14 breath interpolates between colors[0] and colors[1]. Sample at
+  // t = speed/4 and t = 3·speed/4 (the two extremes) — t = speed is the
+  // midpoint again, because sin(2π) is -2.4e-16 rather than exactly 0.
+  const brStates = { ...DEFAULT_STATES, running: { effect: "breath", colors: ["#000000", "#FFFFFF"], speed: 1200 } };
+  const br = new BrowserDriver({ states: brStates });
+  await br.ready({ state: "running", active: 1, states: brStates });
+  const fillOf = (d) => (/fill: (#[0-9a-f]{6})/.exec(d.href) || [])[1] || "";
+  br.raf(100); // t=0 -> midpoint
+  const midFill = fillOf(br);
+  br.raf(400); // t=300 -> quarter cycle -> colors[1]
+  const firstExtreme = fillOf(br);
+  br.raf(1000); // t=900 -> three-quarter cycle -> colors[0]
+  const secondExtreme = fillOf(br);
+  const lum = (hex) => parseInt(hex.slice(1, 3), 16) + parseInt(hex.slice(3, 5), 16) + parseInt(hex.slice(5, 7), 16);
+  ok("B14a breath midpoint between the two colors", midFill === "#808080", midFill);
+  ok("B14b breath reaches both configured colors",
+    firstExtreme === "#ffffff" && secondExtreme === "#000000" &&
+    lum(firstExtreme) > lum(midFill) && lum(secondExtreme) < lum(midFill),
+    "q1=" + firstExtreme + " mid=" + midFill + " q3=" + secondExtreme);
+
+  // B15 hidden-tab fallback: an unchanged static state repaints (self-heal)
+  // instead of leaving a stale frame; an unchanged animated state gets a
+  // wall-clock frame rather than freezing.
+  const sh = new BrowserDriver();
+  await sh.ready({ state: "running", active: 1, states: DEFAULT_STATES });
+  const shFrame = sh.href;
+  sh.link.__attrs.href = "data:image/svg+xml,stale";
+  await sh.poll({ state: "running", active: 1, states: DEFAULT_STATES });
+  ok("B15a unchanged static poll self-heals the frame", sh.href === shFrame && !sh.href.includes("stale"));
+
+  // B16 the count block does not depend on base.svg: with the template
+  // permanently unavailable the count must still render (only the whale waits).
+  const nb = new BrowserDriver();
+  await nb.pump((url) => (url.includes("/base.svg") ? new Error("base down") : nb.statusRes({ state: "running", active: 3, states: DEFAULT_STATES })));
+  await tick();
+  ok("B16a no base.svg -> no whale frame", !nb.href.includes("M48.8354"), nb.href.slice(0, 120));
+  await nb.poll({ state: "running", active: 3, states: DEFAULT_STATES });
+  await nb.pump((url) => (url.includes("/base.svg") ? new Error("base down") : nb.statusRes({ state: "running", active: 3, states: DEFAULT_STATES })));
+  ok("B16b count block renders without base.svg", nb.href.includes(">3<") && nb.href.includes('rx="11"'), nb.href.slice(0, 160));
+
+  // B17 every request is deadline-bounded: fetch receives an AbortSignal, and a
+  // request that hangs is aborted instead of holding the poll chain forever.
+  const t = new BrowserDriver();
+  await t.pump((url) => (url.includes("/base.svg") ? t.svgRes(BASE_SVG) : t.statusRes({ state: "running", active: 1, states: DEFAULT_STATES })));
+  ok("B17a fetch requests carry an abort signal",
+    t.aborts.length > 0 && t.aborts.every((a) => a.signal && a.signal.aborted === false),
+    "controllers=" + t.aborts.length);
+  ok("B17b a deadline timer was armed per request", t.pendingTimeouts.length > 0,
+    "timers=" + t.pendingTimeouts.length);
+  // Simulate the deadline expiring on the in-flight poll.
+  t.pollFn();
+  const hanging = t.queue[t.queue.length - 1];
+  t.aborts[t.aborts.length - 1].abort();
+  ok("B17c aborting marks the request signal", hanging.signal.aborted === true);
+  hanging.reject(new Error("AbortError"));
+  await tick();
+  // The poll chain survived the abort: the next tick still works.
+  await t.poll({ state: "running", active: 1, states: DEFAULT_STATES });
+  ok("B17d poll recovers after an aborted request", t.href.includes("FACC15"));
 }
 
 // ============================================================================
@@ -705,6 +909,9 @@ console.log("\n=== Part 2: browser injected script ===");
 console.log("\n=== Part 3: bigNumUri rendering ===");
 {
   const bigNumSrc = extractBlock(TEMPLATE, "function bigNumUri(fill) {");
+  // bigNumUri memoizes through cachedUri, so the extracted slice needs that
+  // helper too (plus the map it closes over).
+  const cachedUriSrc = extractBlock(TEMPLATE, "function cachedUri(kind, fill, build) {");
   function hexToRgbStub(h) {
     h = String(h).replace("#", "");
     if (h.length === 3) h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
@@ -713,9 +920,9 @@ console.log("\n=== Part 3: bigNumUri rendering ===");
   }
   const makeBigNum = (ACTIVE) =>
     new Function(
-      "ACTIVE", "BIG_NUM_RX", "hexToRgb", "encodeURIComponent",
-      bigNumSrc + "\nreturn bigNumUri;"
-    )(ACTIVE, 11, hexToRgbStub, (s) => s);
+      "ACTIVE", "BIG_NUM_RX", "hexToRgb", "encodeURIComponent", "URI_CACHE",
+      cachedUriSrc + "\n" + bigNumSrc + "\nreturn bigNumUri;"
+    )(ACTIVE, 11, hexToRgbStub, (s) => s, new Map());
 
   // contrast: dark/red/green -> white text; bright -> dark text
   for (const [fill, wantFg] of [
@@ -754,17 +961,280 @@ console.log("\n=== Part 4: injected script syntax ===");
 // ============================================================================
 console.log("\n=== Part 5: demo/badge.html inline script syntax ===");
 {
-  const html = readFileSync(new URL("../demo/badge.html", import.meta.url), "utf8");
-  const m = html.match(/<script>([\s\S]*?)<\/script>/);
-  ok("E1 demo has an inline script", !!m);
-  if (m) {
-    const tmp = path.join(os.tmpdir(), "badge-inline-" + process.pid + ".js");
-    writeFileSync(tmp, m[1]);
-    const out = spawnSync(process.execPath, ["--check", tmp], { encoding: "utf8" });
-    ok("E2 demo inline script parses + threshold aligned",
-      out.status === 0 && m[1].includes('count() >= 2') && m[1].includes('n < 2'), out.stderr);
-    unlinkSync(tmp);
+  // demo/ is a repo-only playground (not in the npm `files` allowlist), so an
+  // installed tarball must still be able to run `npm test`.
+  let html = null;
+  try {
+    html = readFileSync(new URL("../demo/badge.html", import.meta.url), "utf8");
+  } catch (e) {
+    html = null;
   }
+  if (html === null) {
+    console.log("SKIP  E1/E2 demo/badge.html not present (published tarball)");
+  } else {
+    const m = html.match(/<script>([\s\S]*?)<\/script>/);
+    ok("E1 demo has an inline script", !!m);
+    if (m) {
+      const tmp = path.join(os.tmpdir(), "badge-inline-" + process.pid + ".js");
+      writeFileSync(tmp, m[1]);
+      const out = spawnSync(process.execPath, ["--check", tmp], { encoding: "utf8" });
+      ok("E2 demo inline script parses + threshold aligned",
+        out.status === 0 && m[1].includes('count() >= 2') && m[1].includes('n < 2'), out.stderr);
+      unlinkSync(tmp);
+    }
+  }
+}
+
+// ============================================================================
+// PART 6 — browser half (lib/client.js): loader contract, card render, writes
+// ============================================================================
+// The card bundle is a hand-written ModuleLoader factory with two shell-provided
+// requires (`react`, `@deepseek-ai/dsh-client-ui-primitives`). Both are stubbed
+// here — zero dependencies, no build step — so the REAL bundle runs and the
+// rendered tree plus the scope writes it performs can be asserted.
+console.log("\n=== Part 6: browser half (lib/client.js) ===");
+{
+  const CLIENT_SRC = readFileSync(new URL("lib/client.js", REPO), "utf8");
+
+  /** Minimal React stub: createElement trees + the two hooks the card uses. */
+  function makeReactStub() {
+    let states = [];
+    let cursor = 0;
+    let rerender = () => {};
+    const createElement = (type, props, ...children) => ({
+      type,
+      props: { ...(props || {}), children: children.length <= 1 ? children[0] : children },
+    });
+    return {
+      createElement,
+      useState(initial) {
+        const i = cursor++;
+        if (!(i in states)) states[i] = initial;
+        return [states[i], (next) => {
+          states[i] = typeof next === "function" ? next(states[i]) : next;
+          rerender();
+        }];
+      },
+      useSyncExternalStore(subscribe, getSnapshot) {
+        return getSnapshot();
+      },
+      __reset() { states = []; cursor = 0; },
+      __beginRender(fn) { cursor = 0; rerender = fn; },
+    };
+  }
+
+  const primitivesStub = {
+    Button: function Button() { return null; },
+    Input: function Input() { return null; },
+    IconChevronDownOutline14: function IconChevronDownOutline14() { return null; },
+    DisclosureRow: function DisclosureRow() { return null; },
+  };
+
+  /** Walk a createElement tree, yielding every node (depth first). */
+  function* walk(node) {
+    if (node === null || node === undefined || node === false) return;
+    if (Array.isArray(node)) {
+      for (const child of node) yield* walk(child);
+      return;
+    }
+    if (typeof node !== "object" || !("type" in node)) return;
+    yield node;
+    yield* walk(node.props?.children);
+  }
+  const findAll = (tree, pred) => [...walk(tree)].filter(pred);
+  const textOf = (tree) => [...walk(tree)].filter((n) => typeof n.props?.children === "string")
+    .map((n) => n.props.children).join(" ");
+  const findButton = (tree, label) =>
+    findAll(tree, (n) => n.type === primitivesStub.Button && n.props.children === label)[0] || null;
+
+  // ---- loader + factory ----------------------------------------------------
+  let loaded = null;
+  const loaderWindow = {
+    __ModuleLoader__: {
+      load(def) { loaded = def; },
+    },
+  };
+  const vmCtx = vm.createContext({ window: loaderWindow });
+  vm.runInContext(CLIENT_SRC, vmCtx);
+  ok("F1 bundle registers through window.__ModuleLoader__", !!loaded && loaded.id === "dsh-web-icon-indicator",
+    "id=" + (loaded && loaded.id));
+  ok("F2 bundle declares a factory", !!loaded && typeof loaded.factory === "function");
+
+  const react = makeReactStub();
+  const requireStub = (name) => {
+    if (name === "react") return react;
+    if (name === "@deepseek-ai/dsh-client-ui-primitives") return primitivesStub;
+    throw new Error("unexpected require: " + name);
+  };
+  const client = loaded.factory(requireStub);
+  ok("F3 exports apply + inject", typeof client.apply === "function" && Array.isArray(client.inject));
+  eq("F4 inject list", client.inject, ["slots", "settingsScope", "locale"]);
+
+  // ---- apply() contract ----------------------------------------------------
+  const registered = [];
+  const dictionaries = [];
+  let boundSpec = null;
+  const scope = {
+    getSnapshot: () => snapshot,
+    subscribe: () => () => {},
+    set: async (field, value) => { writes.push({ op: "set", field, value }); },
+    unset: async (field) => { writes.push({ op: "unset", field }); },
+    mutate: async (ops) => { writes.push({ op: "mutate", ops }); },
+  };
+  const writes = [];
+  const snapshot = {
+    status: "ready",
+    writable: true,
+    value: {
+      askingHoldMs: 3500,
+      doneHoldMs: 5000,
+      states: {
+        idle: { effect: "static", colors: ["#1a1a1a"] },
+        running: { effect: "static", colors: ["#FACC15"] },
+        asking: { effect: "blink", colors: ["#E5484D", "#FACC15"], speed: 400 },
+        done: { effect: "static", colors: ["#22A06B"] },
+      },
+    },
+    base: {},
+    user: {},
+    revision: 1,
+    mode: "host",
+  };
+  const clientCtx = {
+    locale: {
+      register(ns, dicts) { dictionaries.push({ ns, dicts }); return () => {}; },
+      bind(ns) { return (key) => (dictionaries[0]?.dicts?.en?.[key] ?? key); },
+    },
+    settingsScope: {
+      bind(spec) { boundSpec = spec; return scope; },
+    },
+    slots: {
+      inject(name, cb) { cb(); },
+      register(slotSpec, component) { registered.push({ slotSpec, component }); return () => {}; },
+    },
+    effect(fn) { return fn(); },
+  };
+  client.apply(clientCtx);
+
+  eq("F5 settingsScope bound to the join key", boundSpec && boundSpec.namespace, "web-icon-indicator");
+  ok("F6 locale dictionaries registered (en + zh)",
+    dictionaries.length === 1 && !!dictionaries[0].dicts.en && !!dictionaries[0].dicts.zh,
+    "ns=" + (dictionaries[0] && dictionaries[0].ns));
+  ok("F7 one card registered into settings.plugin.item",
+    registered.length === 1 && registered[0].slotSpec.name === "settings.plugin.item",
+    "count=" + registered.length);
+  const slotSpec = registered[0] && registered[0].slotSpec;
+  eq("F8 slot key is the settings namespace", slotSpec && slotSpec.key, "web-icon-indicator");
+  eq("F9 slot locale namespace", slotSpec && slotSpec.locale, "dsh-web-icon-indicator");
+  const injected = slotSpec && slotSpec.inject();
+  ok("F10 slot inject provides scope + t",
+    injected && injected.scope === scope && typeof injected.t === "function");
+
+  // ---- card render ---------------------------------------------------------
+  // React is stubbed, so a re-render is driven explicitly: the card's own
+  // setState calls `rerender()`, which re-invokes the component with the same
+  // props against the same hook storage.
+  const Card = registered[0].component;
+  const renderCard = (props) => {
+    let tree = null;
+    const render = () => { react.__beginRender(render); tree = Card(props); };
+    render();
+    return () => tree;
+  };
+  const t = injected.t;
+  const cardProps = { scope, t };
+  const card = renderCard(cardProps);
+  const collapsed = card();
+  ok("F11 card renders its title", textOf(collapsed).includes("Favicon indicator"),
+    textOf(collapsed).slice(0, 80));
+  ok("F12 card is collapsed by default (no fields yet)",
+    findAll(collapsed, (n) => n.props && n.props.id === "plugin-config-icon-asking-hold").length === 0);
+
+  // Expand it (the header button toggles local state and re-renders).
+  const header = findAll(collapsed, (n) => n.type === "button")[0];
+  ok("F13 header button toggles the card", !!header && typeof header.props.onClick === "function");
+  header.props.onClick();
+  const openTree = card();
+  ok("F14 expanded card exposes both hold fields",
+    findAll(openTree, (n) => n.props && n.props.id === "plugin-config-icon-asking-hold").length === 1 &&
+    findAll(openTree, (n) => n.props && n.props.id === "plugin-config-icon-done-hold").length === 1);
+  ok("F15 every state row is rendered",
+    ["Idle", "Running", "Asking", "Done"].every((name) =>
+      findAll(openTree, (n) => n.type === primitivesStub.DisclosureRow && n.props.title === name).length === 1),
+    textOf(openTree).slice(0, 120));
+  const askingRow = findAll(openTree, (n) => n.type === primitivesStub.DisclosureRow && n.props.title === "Asking")[0];
+  const askingSummary = textOf(askingRow.props.collapsedContent);
+  ok("F16 collapsed summary shows effect, colors and cycle",
+    askingSummary.includes("Blink") && askingSummary.includes("#E5484D") && askingSummary.includes("#FACC15") &&
+    askingSummary.includes("400ms"),
+    askingSummary);
+
+  // ---- writes --------------------------------------------------------------
+  const saveBtn = findButton(openTree, "Save");
+  const discardBtn = findButton(openTree, "Discard");
+  const resetBtn = findButton(openTree, "Reset to defaults");
+  ok("F17 footer exposes Save / Discard / Reset", !!saveBtn && !!discardBtn && !!resetBtn);
+  ok("F18 Save is disabled while the form is pristine", saveBtn.props.disabled === true);
+
+  // Reset clears the three namespace keys back to the composition layer. The
+  // handler itself is synchronous; the UI settles on the next microtask.
+  writes.length = 0;
+  resetBtn.props.onClick();
+  await tick();
+  eq("F19 reset unsets every namespace key",
+    writes.map((w) => w.op + ":" + w.field).sort(),
+    ["unset:askingHoldMs", "unset:doneHoldMs", "unset:states"]);
+  ok("F19b form returns to pristine after reset", findButton(card(), "Save").props.disabled === true);
+
+  // ---- a staged edit saves as ONE atomic mutation --------------------------
+  writes.length = 0;
+  const byId = (tree, id) => findAll(tree, (n) => n.props && n.props.id === id)[0] || null;
+  const holdField = byId(openTree, "plugin-config-icon-asking-hold");
+  ok("F20 hold field bound to the resolved value", holdField && holdField.props.value === "3500",
+    holdField && holdField.props.value);
+  holdField.props.onChange("2500");
+  const dirtyTree = card();
+  const dirtySave = findButton(dirtyTree, "Save");
+  ok("F21 editing a field marks the form dirty", dirtySave.props.disabled === false);
+  ok("F22 unsaved badge appears", textOf(dirtyTree).includes("Unsaved"));
+  dirtySave.props.onClick();
+  await tick();
+  eq("F23 save issues one atomic mutate with path ops",
+    writes.length === 1 && writes[0].op === "mutate" ? writes[0].ops : writes,
+    [{ op: "set", path: ["askingHoldMs"], value: 2500 }]);
+
+  // A per-state edit rebuilds the whole `states` entry in the same mutate.
+  writes.length = 0;
+  const idleRow = findAll(openTree, (n) => n.type === primitivesStub.DisclosureRow && n.props.title === "Idle")[0];
+  idleRow.props.onToggle(); // expand the idle row (re-render is explicit)
+  const idleOpenTree = card();
+  const idleEffect = byId(idleOpenTree, "plugin-config-icon-idle-effect");
+  ok("F24 expanded state row exposes its effect select", !!idleEffect && idleEffect.props.value === "static",
+    idleEffect && idleEffect.props.value);
+  idleEffect.props.onChange("breath");
+  findButton(card(), "Save").props.onClick();
+  await tick();
+  const stateOp = writes[0] && writes[0].ops && writes[0].ops[0];
+  eq("F25 state edit saves the whole states object at its path",
+    stateOp && stateOp.op === "set" && stateOp.path.join(".") + "=" + stateOp.value.idle.effect,
+    "states=breath");
+  ok("F26 only edited states are written to the user layer",
+    Object.keys(stateOp.value).length === 1 && !!stateOp.value.idle,
+    JSON.stringify(stateOp.value));
+
+  // A previously saved override for another state must survive an edit of a
+  // different state: `scope.set('states', …)` replaces the whole field, so the
+  // card rebuilds it from the raw user layer.
+  writes.length = 0;
+  snapshot.user = { states: { running: { effect: "rainbow", colors: ["#FF0000"] } } };
+  const idleAgain = byId(card(), "plugin-config-icon-idle-effect");
+  idleAgain.props.onChange("bounce");
+  findButton(card(), "Save").props.onClick();
+  await tick();
+  const carried = writes[0] && writes[0].ops && writes[0].ops[0] && writes[0].ops[0].value;
+  ok("F27 an existing user-layer override is carried through",
+    carried && carried.running && carried.running.effect === "rainbow" && carried.idle.effect === "bounce",
+    JSON.stringify(carried));
 }
 
 // ---- summary ---------------------------------------------------------------
