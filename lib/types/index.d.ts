@@ -60,9 +60,22 @@ export interface DshWebIconIndicatorConfig {
    * Defaults to `<package>/icons/`.
    */
   iconsDir?: string;
-  /** Status JSON endpoint the browser polls. Default `/dsh-web-icon-status.json`. */
+  /**
+   * Status JSON endpoint the browser polls. Default `/dsh-web-icon-status.json`.
+   *
+   * **Registration-time:** set it in the composition entry only. The route
+   * table and the injected script are built when the plugin mounts, so this key
+   * is intentionally absent from the settings schema (`settings.yaml`) — a
+   * settings-document change could never be honored and would point the browser
+   * at a path the server does not serve.
+   */
   statusPath?: string;
-  /** URL prefix where `base.svg` is served. Default `/dsh-web-icon-indicator`. */
+  /**
+   * URL prefix where `base.svg` is served. Default `/dsh-web-icon-indicator`.
+   *
+   * **Registration-time:** set it in the composition entry only — see
+   * {@link statusPath}.
+   */
   iconPathPrefix?: string;
   /** Minimum visibility of the asking state in milliseconds. Default 3500. */
   askingHoldMs?: number;
@@ -100,7 +113,7 @@ export interface DshWebIconIndicatorAggregate {
  */
 declare const plugin: {
   name: "dsh-web-icon-indicator";
-  inject: readonly ["webServer", "timer", "agents", "fs", "sandboxPolicy"];
+  inject: readonly ["webServer", "timer", "agents", "fs"];
   config: DshWebIconIndicatorConfig;
   apply(ctx: unknown, config?: unknown): void;
   /** Settings namespace carrying the config (`web-icon-indicator`). */

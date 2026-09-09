@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+* asking pin can no longer lose its release timer when a second
+  `ask_user_question` pre-execute lands during a re-arm (the stored handle was
+  cancelled unconditionally, including the one being re-armed)
+* `statusPath` / `iconPathPrefix` are no longer part of the settings schema: they
+  are baked into the route table and the injected script at registration time, so
+  a settings-document edit could never be honored and would leave the tab polling
+  a path the server does not serve
+* browser requests are deadline-bounded (`AbortController`, 8 s) so a hung fetch
+  can no longer freeze the poll chain or the `base.svg` load
+* the full-frame count block renders even when `base.svg` is unavailable — only
+  the whale path waits for the template
+* `npm test` now works from the published tarball (`test/` ships; the repo-only
+  `demo/badge.html` checks skip gracefully)
+
+### Changed
+
+* the pending-approval fold reads the session log incrementally (per-agent
+  `snapshotEvents(fromSeq)` cursor) instead of cloning and deep-freezing the
+  whole log on every 1 s status poll
+* the settings card saves through one atomic `scope.mutate` (single revision
+  fence, validation, persistence and recovery read) instead of N field writes
+* frame data URIs are memoized per fill for `static` / `blink` / `breath` and the
+  geometric effects, so the 3.6 kB base template is no longer re-encoded on every
+  animation frame (`rainbow` stays uncached — its fill changes every frame)
+* `resolveConfig` ignores `undefined` values instead of letting them shadow a
+  `DEFAULTS` entry
+* dropped the unused `sandboxPolicy` injection; documented the fixed 1 s poll
+  interval; GitHub Pages workflow actions bumped to match `publish.yml`
+* test suite grew from 87 to 137 checks: browser-half smoke test for
+  `lib/client.js` (loader contract, slot registration, card render, atomic save,
+  reset) plus coverage for `heartbeat` / `bounce` / `breath`, hidden-tab
+  self-heal, count-block-without-template and abort recovery
+
 ## [0.4.2](https://github.com/waknow/dsh-web-icon-indicator/compare/v0.4.1...v0.4.2) (2026-09-07)
 
 ### Fixed
