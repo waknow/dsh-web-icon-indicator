@@ -608,8 +608,14 @@ class BrowserDriver {
     this.pendingTimeouts = []; // armed fetch-deadline callbacks (never auto-fired)
     const ctrl = this;
     const context = vm.createContext({
-      window: { __DSH_WEB_ICON_INDICATOR__: false, addEventListener() {} },
+      window: {
+        __DSH_WEB_ICON_INDICATOR__: false,
+        addEventListener(ev, fn) {
+          if (ev === "visibilitychange") ctrl.visFn = fn; // capture for the B18 test
+        },
+      },
       document: {
+        visibilityState: "visible",
         querySelector: (sel) => (sel.includes("icon") ? ctrl.link : null),
         createElement: () => makeFakeLink(""),
         head: { appendChild() {} },
@@ -901,6 +907,31 @@ console.log("\n=== Part 2: browser injected script ===");
   // The poll chain survived the abort: the next tick still works.
   await t.poll({ state: "running", active: 1, states: DEFAULT_STATES });
   ok("B17d poll recovers after an aborted request", t.href.includes("FACC15"));
+
+  // B18 returning to a hidden tab repaints immediately: the visibilitychange
+  // listener fires a fresh poll instead of waiting for the next — possibly
+  // throttled — interval tick, so a revert that happened while the tab was
+  // away (e.g. done -> idle) shows the moment the tab becomes visible again.
+  const v = new BrowserDriver();
+  await v.ready({ state: "running", active: 1, states: DEFAULT_STATES });
+  v.context.document.visibilityState = "hidden";
+  await v.poll({ state: "done", active: 1, states: DEFAULT_STATES }); // what the tab saw before going away
+  ok("B18a done frame painted while 'hidden'", v.href.includes("22A06B"), v.href.slice(0, 120));
+  // The host reverts to idle while the tab is away; the tab becomes visible.
+  v.context.document.visibilityState = "visible";
+  ok("B18b visibilitychange listener captured", typeof v.visFn === "function");
+  v.visFn(); // fires the immediate poll
+  await v.pump((url) =>
+    url.includes("/base.svg") ? v.svgRes(BASE_SVG) : v.statusRes({ state: "idle", active: 0, states: DEFAULT_STATES })
+  );
+  if (v.queue.length) await v.pump((url) => v.svgRes(BASE_SVG)); // deferred base fetch
+  await tick();
+  ok("B18c visible-return poll repaints the reverted idle frame",
+    v.href.includes("1a1a1a") && !v.href.includes("22A06B"), v.href.slice(0, 160));
+  // A hidden->visible transition must NOT clobber an animated frame either:
+  // poll a different state while visible and confirm the listener path stays safe.
+  await v.poll({ state: "running", active: 1, states: DEFAULT_STATES });
+  ok("B18d subsequent polls unaffected after visible-return poll", v.href.includes("FACC15"));
 }
 
 // ============================================================================
