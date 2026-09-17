@@ -95,7 +95,7 @@ const builtScript = buildScript(DEFAULT_STATES);
 // ============================================================================
 // PART 1 — host plugin integration (REAL apply(), stubbed ctx)
 // ============================================================================
-function makeCtx() {
+function makeCtx(opts = {}) {
   const routes = [];
   const taps = [];
   const onHandlers = {};
@@ -150,6 +150,11 @@ function makeCtx() {
     fs: null,
     sandboxPolicy: null,
   };
+  if (opts.logger) {
+    // Optional capture of `ctx.logger(name).warn(...)`: the host half reports its
+    // default-color warnings through the cordis core logger when one is present.
+    ctx.logger = (name) => ({ warn: (msg) => opts.logger.push(name + ": " + msg) });
+  }
   return {
     ctx,
     routes,
@@ -573,6 +578,200 @@ const { default: plugin } = await import(new URL("../lib/index.js", import.meta.
   ok("H24d at least one pending hold timer survived", pending.length >= 1, "pending=" + pending.length);
   for (const t of pending) t.cb();
   eq("H24e hold expiry after answer -> running", state3(), { state: "running", active: 1 });
+}
+
+{
+  // H25–H28 — `defaultColor`: folded into the idle primary, echoed by the status
+  // endpoint, and judged by the CIE76 similarity warning (advisory: a value that
+  // collides with a state color is reported, never rejected).
+  const logs = [];
+  const h4 = makeCtx({ logger: logs });
+  plugin.apply(h4.ctx);
+  const statusRoute4 = h4.routes.find((r) => r.kind === "exact");
+  const aggregate4 = () => {
+    const res = fakeRes();
+    statusRoute4.handler(null, res);
+    return JSON.parse(res.body);
+  };
+  const opts4 = globalThis.__DSH_ICON_TEST__.settingsOpts;
+
+  // Absent defaultColor: unchanged behavior, no warning, no log.
+  const outOfTheBox = aggregate4();
+  ok("H25a absent defaultColor keeps the idle default and warns about nothing",
+    outOfTheBox.states.idle.colors[0] === "#1a1a1a" &&
+    Array.isArray(outOfTheBox.warnings) && outOfTheBox.warnings.length === 0,
+    JSON.stringify(outOfTheBox.warnings));
+  ok("H25b absent defaultColor logs nothing", logs.length === 0, JSON.stringify(logs));
+
+  // A distinct default color folds into the idle primary (colors[1] survives for
+  // a multi-color idle effect) and is echoed by the status payload.
+  opts4.setSource(() => ({
+    defaultColor: "#5B8DEF",
+    states: { idle: { effect: "breath", colors: ["#111111", "#DDDDDD"] } },
+  }));
+  opts4.onChange();
+  const distinct = aggregate4();
+  eq("H26a defaultColor overrides the idle primary", distinct.states.idle.colors[0], "#5b8def");
+  eq("H26b defaultColor keeps the idle state's secondary color for multi-color effects",
+    distinct.states.idle.colors[1], "#DDDDDD");
+  eq("H26c status echoes the resolved defaultColor", distinct.defaultColor, "#5b8def");
+  ok("H26d a distinct default color raises no similarity warning",
+    distinct.warnings.filter((w) => w.code === "color-too-close").length === 0,
+    JSON.stringify(distinct.warnings));
+
+  // Exactly the running color: strong (ΔE 0), and the asking blink shares it.
+  opts4.setSource(() => ({ defaultColor: "#FACC15", states: { idle: { effect: "static", colors: ["#111111"] } } }));
+  opts4.onChange();
+  const colliding = aggregate4();
+  const runningWarn = colliding.warnings.find((w) => w.state === "running" && w.code === "color-too-close");
+  ok("H27a a default color equal to the running color warns strongly",
+    !!runningWarn && runningWarn.level === "strong" && runningWarn.deltaE === 0 && runningWarn.base === "#facc15",
+    JSON.stringify(colliding.warnings));
+  ok("H27b the asking blink's shared color warns too",
+    colliding.warnings.some((w) => w.state === "asking" && w.code === "color-too-close"),
+    JSON.stringify(colliding.warnings));
+  ok("H27c the host logged the warning through ctx.logger",
+    logs.some((l) => l.includes("dsh-web-icon-indicator") && l.includes("#facc15")),
+    JSON.stringify(logs));
+
+  // The soft band (12 ≤ ΔE < 25) reports level "warn" instead of "strong".
+  opts4.setSource(() => ({ defaultColor: "#b8a000" }));
+  opts4.onChange();
+  const soft = aggregate4().warnings.find((w) => w.state === "running" && w.code === "color-too-close");
+  ok("H28a the soft band reports level warn",
+    !!soft && soft.level === "warn" && soft.deltaE > 12 && soft.deltaE < 25, JSON.stringify(soft));
+
+  // A malformed value is dropped (never painted) and reported.
+  opts4.setSource(() => ({ defaultColor: "#12" }));
+  opts4.onChange();
+  const malformed = aggregate4();
+  ok("H28b an invalid defaultColor is dropped, not painted (echoed as null)",
+    malformed.defaultColor === null && malformed.states.idle.colors[0] === "#1a1a1a",
+    JSON.stringify({ defaultColor: malformed.defaultColor, idle: malformed.states.idle }));
+  ok("H28c the invalid value is reported as a warning",
+    malformed.warnings.some((w) => w.code === "invalid-color" && w.value === "#12"),
+    JSON.stringify(malformed.warnings));
+
+  // A rainbow state sweeps every hue, so any chromatic default collides with it.
+  opts4.setSource(() => ({ defaultColor: "#5B8DEF", states: { done: { effect: "rainbow", colors: ["#22A06B"] } } }));
+  opts4.onChange();
+  const rainbow = aggregate4();
+  ok("H28d a rainbow state warns against a chromatic default",
+    rainbow.warnings.some((w) => w.code === "rainbow-overlap" && w.state === "done"),
+    JSON.stringify(rainbow.warnings));
+  ok("H28d2 a rainbow state does not also warn about a color it never paints",
+    !rainbow.warnings.some((w) => w.state === "done" && w.code === "color-too-close"),
+    JSON.stringify(rainbow.warnings));
+
+  // "" / whitespace in a hand-written composition entry means "unset", not a
+  // malformed color to warn about.
+  opts4.setSource(() => ({ defaultColor: "  " }));
+  opts4.onChange();
+  const blank = aggregate4();
+  ok("H28e a blank defaultColor means unset (echoed as null)",
+    blank.defaultColor === null && blank.states.idle.colors[0] === "#1a1a1a" && blank.warnings.length === 0,
+    JSON.stringify({ defaultColor: blank.defaultColor, warnings: blank.warnings }));
+
+  // An empty YAML value (`defaultColor:`) parses as null: unset, not malformed.
+  opts4.setSource(() => ({ defaultColor: null }));
+  opts4.onChange();
+  const nullDefault = aggregate4();
+  ok("H28e2 a null defaultColor means unset too",
+    nullDefault.defaultColor === null && nullDefault.warnings.length === 0,
+    JSON.stringify({ defaultColor: nullDefault.defaultColor, warnings: nullDefault.warnings }));
+
+  // A state whose colors are entirely invalid falls back to its built-in color
+  // (resolveConfig), and the warning must judge that color — this pins the
+  // card's matching fallback (F36).
+  opts4.setSource(() => ({ defaultColor: "#FACC15", states: { running: { colors: ["red"] } } }));
+  opts4.onChange();
+  const fallback = aggregate4();
+  ok("H28f an invalid state color falls back to the built-in color before comparing",
+    fallback.states.running.colors[0] === "#FACC15" &&
+    fallback.warnings.some((w) => w.state === "running" && w.color === "#facc15" && w.deltaE === 0),
+    JSON.stringify({ running: fallback.states.running, warnings: fallback.warnings }));
+
+  // A 4/5-digit hex is not a colour either: dropped by the host exactly like the
+  // card drops it, never parsed into a bogus RGB triple.
+  opts4.setSource(() => ({ states: { running: { colors: ["#1234"] } } }));
+  opts4.onChange();
+  const baddigit = aggregate4();
+  ok("H28g a 4-digit hex state color is dropped, not parsed",
+    baddigit.states.running.colors[0] === "#FACC15", JSON.stringify(baddigit.states.running));
+
+  // A PARTIALLY invalid list keeps its valid entries (the card has to agree —
+  // F49 pins the card side).
+  opts4.setSource(() => ({ defaultColor: "#FF0000", states: { running: { colors: ["#FF0000", "red"] } } }));
+  opts4.onChange();
+  const partial = aggregate4();
+  ok("H28h a partially invalid colors list keeps the valid entries",
+    partial.states.running.colors.join(",") === "#FF0000" &&
+    partial.warnings.some((w) => w.state === "running" && w.color === "#ff0000" && w.deltaE === 0),
+    JSON.stringify({ running: partial.states.running, warnings: partial.warnings }));
+
+  // The browser paints breath as a CONTINUOUS mix: a blue -> green gradient runs
+  // straight through the configured default's own colour, which the old 5-point
+  // sampling missed entirely (reported ΔE 37 instead of 0).
+  opts4.setSource(() => ({
+    defaultColor: "#005aa5",
+    states: { running: { effect: "breath", colors: ["#0000ff", "#00ff00"] } },
+  }));
+  opts4.onChange();
+  const breathGap = aggregate4();
+  const breathWarn = breathGap.warnings.find((w) => w.state === "running" && w.code === "color-too-close");
+  ok("H28i a breath gradient is sampled densely enough to catch the collision",
+    !!breathWarn && breathWarn.deltaE < 8, JSON.stringify(breathGap.warnings));
+
+  // idle itself on `rainbow` (composition entry only): it sweeps every hue, so
+  // the default colour cannot stay distinguishable — one advisory, no pairwise pass.
+  opts4.setSource(() => ({ defaultColor: "#ff0000", states: { idle: { effect: "rainbow", colors: ["#1a1a1a"] } } }));
+  opts4.onChange();
+  const idleRainbow = aggregate4();
+  ok("H28j idle running rainbow is reported as a hue sweep",
+    idleRainbow.warnings.some((w) => w.code === "rainbow-overlap" && w.state === "idle") &&
+    !idleRainbow.warnings.some((w) => w.code === "color-too-close"),
+    JSON.stringify(idleRainbow.warnings));
+  opts4.setSource(() => ({ defaultColor: "#1a1a1a", states: { idle: { effect: "rainbow", colors: ["#1a1a1a"] } } }));
+  opts4.onChange();
+  ok("H28j2 a neutral default stays quiet even when idle is rainbow",
+    aggregate4().warnings.length === 0, JSON.stringify(aggregate4().warnings));
+
+  // A hand-written states.idle entry is honoured on its own (no defaultColor).
+  opts4.setSource(() => ({ states: { idle: { effect: "blink", colors: ["#111111", "#DDDDDD"], speed: 900 } } }));
+  opts4.onChange();
+  const idleOnly = aggregate4();
+  ok("H28k a hand-written states.idle entry survives without defaultColor",
+    idleOnly.states.idle.effect === "blink" &&
+    idleOnly.states.idle.colors.join(",") === "#111111,#DDDDDD" &&
+    idleOnly.defaultColor === null,
+    JSON.stringify({ idle: idleOnly.states.idle, defaultColor: idleOnly.defaultColor }));
+}
+
+{
+  // H29 — the host log covers the other two warning codes as well (H27c only
+  // asserted the color-too-close line).
+  const logs2 = [];
+  const h5 = makeCtx({ logger: logs2 });
+  plugin.apply(h5.ctx);
+  const statusRoute5 = h5.routes.find((r) => r.kind === "exact");
+  const aggregate5 = () => {
+    const res = fakeRes();
+    statusRoute5.handler(null, res);
+    return JSON.parse(res.body);
+  };
+  const opts5 = globalThis.__DSH_ICON_TEST__.settingsOpts;
+
+  opts5.setSource(() => ({ defaultColor: "#zz" }));
+  opts5.onChange();
+  aggregate5();
+  ok("H29 an invalid defaultColor is logged with its value",
+    logs2.some((l) => l.includes("not a 3- or 6-digit hex color")), JSON.stringify(logs2));
+
+  opts5.setSource(() => ({ defaultColor: "#ff0000", states: { done: { effect: "rainbow", colors: ["#22A06B"] } } }));
+  opts5.onChange();
+  aggregate5();
+  ok("H29b a rainbow state is logged as an all-hue sweep",
+    logs2.some((l) => l.includes("rainbow effect sweeps every hue")), JSON.stringify(logs2));
 }
 
 // ============================================================================
@@ -1189,16 +1388,64 @@ console.log("\n=== Part 6: browser half (lib/client.js) ===");
   ok("F14 expanded card exposes both hold fields",
     findAll(openTree, (n) => n.props && n.props.id === "plugin-config-icon-asking-hold").length === 1 &&
     findAll(openTree, (n) => n.props && n.props.id === "plugin-config-icon-done-hold").length === 1);
-  ok("F15 every state row is rendered",
-    ["Idle", "Running", "Asking", "Done"].every((name) =>
+  ok("F15 the animated / signal states get a detail row",
+    ["Running", "Asking", "Done"].every((name) =>
       findAll(openTree, (n) => n.type === primitivesStub.DisclosureRow && n.props.title === name).length === 1),
     textOf(openTree).slice(0, 120));
+  // Idle has no detail row: its single color is the default-color field and it
+  // takes no animation, so no idle effect/colors/cycle field may render.
+  ok("F15b idle has no detail row and no idle field",
+    findAll(openTree, (n) => n.type === primitivesStub.DisclosureRow && n.props.title === "Idle").length === 0 &&
+    findAll(openTree, (n) => n.props && typeof n.props.id === "string" && n.props.id.indexOf("plugin-config-icon-idle-") === 0).length === 0,
+    textOf(openTree).slice(0, 160));
+  // The row header previews EVERY color of the state: asking blinks between two
+  // colors, so a single dot hid one of them.
+  const askingRowNode = findAll(openTree, (n) => n.type === primitivesStub.DisclosureRow && n.props.title === "Asking")[0];
+  const askingIcon = askingRowNode.props.icon;
+  const askingBands = askingIcon && askingIcon.props && askingIcon.props.children;
+  ok("F15c the row icon is ONE chip split into explicit bands (asking: red | yellow)",
+    !!askingIcon && askingIcon.props.style.position === "relative" &&
+    Array.isArray(askingBands) && askingBands.length === 2 &&
+    askingBands.map((b) => b.props.style.background).join(",") === "#E5484D,#FACC15" &&
+    // 1px seam between the bands, and the last band overflows so the right edge
+    // never shows a gap (the chip clips it).
+    askingBands[0].props.style.width === "calc(50% - 1px)" &&
+    askingBands[1].props.style.width === "calc(50% + 1px)",
+    JSON.stringify(askingBands && askingBands.map((b) => b.props.style)));
+  const runningIcon = findAll(openTree, (n) => n.type === primitivesStub.DisclosureRow && n.props.title === "Running")[0].props.icon;
+  ok("F15c2 a single-color state is one full-width band",
+    runningIcon.props.children.length === 1 &&
+    runningIcon.props.children[0].props.style.background === "#FACC15" &&
+    runningIcon.props.children[0].props.style.width === "calc(100% + 1px)",
+    JSON.stringify(runningIcon.props.children[0].props.style));
+  // The colors field edits chips: asking carries both colors plus add/remove,
+  // while a static state (no second color in play) offers no add chip.
+  const askingColorsField = findAll(openTree, (n) => n.props && n.props.id === "plugin-config-icon-asking-colors")[0];
+  const runningColorsField = findAll(openTree, (n) => n.props && n.props.id === "plugin-config-icon-running-colors")[0];
+  ok("F15d a full two-colour list exposes both colours and a remove (no add) affordance",
+    !!askingColorsField && askingColorsField.props.colors.join(",") === "#E5484D,#FACC15" &&
+    askingColorsField.props.canAdd === false && askingColorsField.props.canRemove === true &&
+    !!runningColorsField && runningColorsField.props.canAdd === false,
+    JSON.stringify({
+      asking: askingColorsField && askingColorsField.props.colors,
+      askingAdd: askingColorsField && askingColorsField.props.canAdd,
+      runningAdd: runningColorsField && runningColorsField.props.canAdd,
+    }));
   const askingRow = findAll(openTree, (n) => n.type === primitivesStub.DisclosureRow && n.props.title === "Asking")[0];
-  const askingSummary = textOf(askingRow.props.collapsedContent);
-  ok("F16 collapsed summary shows effect, colors and cycle",
-    askingSummary.includes("Blink") && askingSummary.includes("#E5484D") && askingSummary.includes("#FACC15") &&
-    askingSummary.includes("400ms"),
-    askingSummary);
+  // `textOf` only collects single-string children; the summary mixes strings
+  // with chip elements, so walk the children recursively for its text.
+  const deepText = (node) => {
+    if (node === null || node === undefined || node === false) return "";
+    if (typeof node === "string" || typeof node === "number") return String(node);
+    if (Array.isArray(node)) return node.map(deepText).join(" ");
+    if (typeof node !== "object" || !("type" in node)) return "";
+    return deepText(node.props && node.props.children);
+  };
+  const askingSummary = deepText(askingRow.props.collapsedContent);
+  const summaryChips = findAll(askingRow.props.collapsedContent, (n) => n.props && n.props.style && n.props.style.background);
+  ok("F16 the summary stays compact text (effect + cycle), no hex and no repeated chips",
+    askingSummary === "Blink · 400ms" && summaryChips.length === 0,
+    JSON.stringify({ text: askingSummary, chips: summaryChips.length }));
 
   // ---- writes --------------------------------------------------------------
   const saveBtn = findButton(openTree, "Save");
@@ -1214,7 +1461,7 @@ console.log("\n=== Part 6: browser half (lib/client.js) ===");
   await tick();
   eq("F19 reset unsets every namespace key",
     writes.map((w) => w.op + ":" + w.field).sort(),
-    ["unset:askingHoldMs", "unset:doneHoldMs", "unset:states"]);
+    ["unset:askingHoldMs", "unset:defaultColor", "unset:doneHoldMs", "unset:states"]);
   ok("F19b form returns to pristine after reset", findButton(card(), "Save").props.disabled === true);
 
   // ---- a staged edit saves as ONE atomic mutation --------------------------
@@ -1235,37 +1482,538 @@ console.log("\n=== Part 6: browser half (lib/client.js) ===");
     [{ op: "set", path: ["askingHoldMs"], value: 2500 }]);
 
   // A per-state edit rebuilds the whole `states` entry in the same mutate.
+  // Idle has no row (F15b), so this uses Running.
   writes.length = 0;
-  const idleRow = findAll(openTree, (n) => n.type === primitivesStub.DisclosureRow && n.props.title === "Idle")[0];
-  idleRow.props.onToggle(); // expand the idle row (re-render is explicit)
-  const idleOpenTree = card();
-  const idleEffect = byId(idleOpenTree, "plugin-config-icon-idle-effect");
-  ok("F24 expanded state row exposes its effect select", !!idleEffect && idleEffect.props.value === "static",
-    idleEffect && idleEffect.props.value);
-  idleEffect.props.onChange("breath");
+  const runningRow = findAll(openTree, (n) => n.type === primitivesStub.DisclosureRow && n.props.title === "Running")[0];
+  runningRow.props.onToggle(); // expand the running row (re-render is explicit)
+  const runningOpenTree = card();
+  const runningEffect = byId(runningOpenTree, "plugin-config-icon-running-effect");
+  ok("F24 expanded state row exposes its effect select", !!runningEffect && runningEffect.props.value === "static",
+    runningEffect && runningEffect.props.value);
+  runningEffect.props.onChange("breath");
   findButton(card(), "Save").props.onClick();
   await tick();
   const stateOp = writes[0] && writes[0].ops && writes[0].ops[0];
   eq("F25 state edit saves the whole states object at its path",
-    stateOp && stateOp.op === "set" && stateOp.path.join(".") + "=" + stateOp.value.idle.effect,
+    stateOp && stateOp.op === "set" && stateOp.path.join(".") + "=" + stateOp.value.running.effect,
     "states=breath");
   ok("F26 only edited states are written to the user layer",
-    Object.keys(stateOp.value).length === 1 && !!stateOp.value.idle,
+    Object.keys(stateOp.value).length === 1 && !!stateOp.value.running,
     JSON.stringify(stateOp.value));
 
   // A previously saved override for another state must survive an edit of a
   // different state: `scope.set('states', …)` replaces the whole field, so the
-  // card rebuilds it from the raw user layer.
+  // card rebuilds it from the raw user layer. An idle entry the card cannot
+  // edit (e.g. hand-written into settings.yaml) must survive untouched too.
   writes.length = 0;
-  snapshot.user = { states: { running: { effect: "rainbow", colors: ["#FF0000"] } } };
-  const idleAgain = byId(card(), "plugin-config-icon-idle-effect");
-  idleAgain.props.onChange("bounce");
+  snapshot.user = {
+    states: {
+      done: { effect: "rainbow", colors: ["#FF0000"] },
+      idle: { effect: "breath", colors: ["#111111", "#DDDDDD"] },
+    },
+  };
+  const runningAgain = byId(card(), "plugin-config-icon-running-effect");
+  runningAgain.props.onChange("bounce");
   findButton(card(), "Save").props.onClick();
   await tick();
   const carried = writes[0] && writes[0].ops && writes[0].ops[0] && writes[0].ops[0].value;
   ok("F27 an existing user-layer override is carried through",
-    carried && carried.running && carried.running.effect === "rainbow" && carried.idle.effect === "bounce",
+    carried && carried.done && carried.done.effect === "rainbow" && carried.running.effect === "bounce",
     JSON.stringify(carried));
+  ok("F27b a hand-written idle entry survives untouched",
+    carried && carried.idle && carried.idle.effect === "breath" && carried.idle.colors.length === 2,
+    JSON.stringify(carried && carried.idle));
+
+  // ---- default color: field, live warning, one-atomic-mutate save -----------
+  writes.length = 0;
+  const defaultField = byId(card(), "plugin-config-icon-default-color");
+  ok("F28 with no override configured the field shows the idle color chip",
+    !!defaultField && Array.isArray(defaultField.props.colors) && defaultField.props.colors[0] === "#1a1a1a",
+    JSON.stringify(defaultField && defaultField.props.colors));
+  const paletteLabel = findAll(card(), (n) => n.props && n.props.children === "Palette")[0];
+  const paletteRow = findAll(card(), (n) => Array.isArray(n.props && n.props.children) &&
+    n.props.children.indexOf(paletteLabel) !== -1)[0];
+  const paletteItems = (paletteRow && paletteRow.props.children[1]) || [];
+  const paletteBands = (item) => item.props.children[1].props.children.map((b) => b.props.style.background);
+  ok("F28b the palette lists every state as name-then-chip, one banded chip for asking",
+    !!paletteLabel && paletteItems.length === 4 &&
+    paletteItems.every((item) => typeof item.props.children[0] === "string" &&
+      item.props.children[1] && Array.isArray(item.props.children[1].props.children)) &&
+    paletteItems.some((item) => paletteBands(item).join(",") === "#E5484D,#FACC15"),
+    JSON.stringify(paletteItems.map((item) => [item.props.children[0], paletteBands(item)])));
+  // The card shows colors as chips; the hex value lives in the native picker.
+  // No rendered text may contain a hex literal (warnings are the only place a
+  // color code appears, and there is none configured at this point).
+  ok("F28d the card renders colors as chips, never as hex text",
+    !/#[0-9a-fA-F]{3,6}/.test(deepText(card())), deepText(card()).slice(0, 200));
+  // Every native color picker is an invisible absolute overlay inside its 14x14
+  // chip: without that style the UA widget renders at its own size and overflows
+  // the row (the stray control seen next to the text field).
+  // The stubbed React never invokes function components, so materialize the
+  // ColorField elements before looking for their native color inputs.
+  const colorFieldNodes = findAll(card(), (n) => n.props && typeof n.props.onColors === "function" && typeof n.props.id === "string");
+  const colorInputs = colorFieldNodes
+    .map((n) => n.type(n.props))
+    .filter(Boolean)
+    .reduce((acc, tree) => acc.concat(findAll(tree, (n) => n.type === "input" && n.props && n.props.type === "color")), []);
+  ok("F28c every colour field keeps at least one native picker (5 chips today)",
+    colorInputs.length === 5 &&
+    colorFieldNodes.every((n) => findAll(n.type(n.props), (c) => c.type === "input" && c.props.type === "color").length >= 1),
+    "inputs=" + colorInputs.length);
+  ok("F28c every native color picker is an invisible overlay",
+    colorInputs.length >= 1 && colorInputs.every((n) => n.props.style &&
+      n.props.style.position === "absolute" && n.props.style.opacity === 0 &&
+      n.props.style.width === "100%" && n.props.style.height === "100%"),
+    JSON.stringify(colorInputs.map((n) => n.props.style)));
+
+  // Typing a color equal to the running state raises the strong warning live
+  // (before any save) — advisory only, so Save stays enabled below.
+  // Only the warning paragraphs (`role="status"`) count below — the palette row
+  // renders the state names too, so `textOf` alone would be vacuous.
+  const warnTexts = (tree) => findAll(tree, (n) => n.props && n.props.role === "status" && typeof n.props.children === "string")
+    .map((n) => n.props.children);
+  defaultField.props.onColors(["#FACC15"]);
+  const warnedTree = card();
+  ok("F29 a near-state color warns before saving",
+    warnTexts(warnedTree).some((line) => line.includes("Nearly identical") && line.includes("#FACC15") && line.includes("Running")),
+    JSON.stringify(warnTexts(warnedTree)));
+
+  findButton(warnedTree, "Save").props.onClick();
+  await tick();
+  const dcOps = (writes[0] && writes[0].ops) || [];
+  ok("F30 save writes defaultColor in one atomic mutate despite the warning",
+    writes.length === 1 &&
+    dcOps.some((o) => o.op === "set" && o.path.join(".") === "defaultColor" && o.value === "#FACC15"),
+    JSON.stringify(writes));
+
+  // A distinct color clears the warning again.
+  const distinctField = byId(card(), "plugin-config-icon-default-color");
+  distinctField.props.onColors(["#5B8DEF"]);
+  ok("F31 a distinct color shows no warning", warnTexts(card()).length === 0, JSON.stringify(warnTexts(card())));
+
+  // ---- an override configured outside this card ----------------------------
+  // The scope resolves `states` and `defaultColor` independently, so the
+  // configured override (base or user layer) is NOT visible in
+  // value.states.idle.colors[0]: the field, the palette and the warnings must
+  // read the key itself.
+  snapshot.user = {};
+  snapshot.value.defaultColor = "#FACC15";
+  // The stub only re-renders on a hook setState, so snapshot mutations must
+  // land BEFORE this click (which also drops the '#5B8DEF' draft).
+  findButton(card(), "Discard").props.onClick();
+  const overrideField = byId(card(), "plugin-config-icon-default-color");
+  ok("F32 the field shows the configured defaultColor chip, not the scope's idle color",
+    overrideField.props.colors[0] === "#FACC15", JSON.stringify(overrideField.props.colors));
+  ok("F33 the configured defaultColor is what the warnings judge",
+    warnTexts(card()).some((line) => line.includes("Running") && line.includes("#FACC15")),
+    JSON.stringify(warnTexts(card())));
+
+  // A default-color edit and a state edit land in ONE atomic mutate.
+  snapshot.user = {};
+  snapshot.value.defaultColor = "#FACC15";
+  writes.length = 0;
+  byId(card(), "plugin-config-icon-default-color").props.onColors(["#5B8DEF"]);
+  byId(card(), "plugin-config-icon-running-effect").props.onChange("blink");
+  findButton(card(), "Save").props.onClick();
+  await tick();
+  const combinedOps = (writes[0] && writes[0].ops) || [];
+  ok("F34 a default-color edit and a state edit share one atomic mutate",
+    writes.length === 1 &&
+    combinedOps.some((o) => o.op === "set" && o.path.join(".") === "defaultColor" && o.value === "#5B8DEF") &&
+    combinedOps.some((o) => o.op === "set" && o.path.join(".") === "states"),
+    JSON.stringify(writes));
+
+  // Editing a state must never touch the default color: idle is not a card
+  // state, so no idle row can drag the override into the write.
+  snapshot.value.defaultColor = "#FACC15";
+  writes.length = 0;
+  byId(card(), "plugin-config-icon-running-colors").props.onColors(["#3366FF"]);
+  findButton(card(), "Save").props.onClick();
+  await tick();
+  const stateOnlyOps = (writes[0] && writes[0].ops) || [];
+  ok("F35 a state edit leaves the default color alone",
+    stateOnlyOps.some((o) => o.op === "set" && o.path.join(".") === "states") &&
+    !stateOnlyOps.some((o) => o.path.join(".") === "defaultColor"),
+    JSON.stringify(writes));
+
+  // Host parity for malformed state colors: resolveConfig drops them and falls
+  // back to the built-in color, so the card must judge that same color.
+  snapshot.value.states = Object.assign({}, snapshot.value.states, { running: { effect: "static", colors: ["red"] } });
+  snapshot.value.defaultColor = "#FACC15";
+  byId(card(), "plugin-config-icon-asking-hold").props.onChange("3500"); // force a render
+  ok("F36 the card falls back to the built-in state color like the host",
+    warnTexts(card()).some((line) => line.includes("Running") && line.includes("#FACC15")),
+    JSON.stringify(warnTexts(card())));
+
+  // ---- only the colors the effect uses are listed (and saved) ---------------
+  const askingColorsBefore = byId(card(), "plugin-config-icon-asking-colors");
+  ok("F37 a two-color effect (blink) lists both colors and has no room to add",
+    askingColorsBefore.props.colors.join(",") === "#E5484D,#FACC15" && askingColorsBefore.props.canAdd === false,
+    JSON.stringify({ colors: askingColorsBefore.props.colors, canAdd: askingColorsBefore.props.canAdd }));
+
+  // blink -> static: the unused second color must disappear from the field...
+  byId(card(), "plugin-config-icon-asking-effect").props.onChange("static");
+  const singleField = byId(card(), "plugin-config-icon-asking-colors");
+  ok("F38 a single-color effect shows exactly one chip and no add chip",
+    singleField.props.colors.join(",") === "#E5484D" && singleField.props.canAdd === false,
+    JSON.stringify({ colors: singleField.props.colors, canAdd: singleField.props.canAdd }));
+  // ...and from the stored config: no invisible second color survives the save.
+  writes.length = 0;
+  findButton(card(), "Save").props.onClick();
+  await tick();
+  const statesWrite = ((writes[0] && writes[0].ops) || []).find((o) => o.path.join(".") === "states");
+  ok("F38b saving a single-color effect drops the unused second color",
+    !!statesWrite && statesWrite.value.asking.effect === "static" &&
+    statesWrite.value.asking.colors.join(",") === "#E5484D",
+    JSON.stringify(statesWrite && statesWrite.value.asking));
+
+  // rainbow needs no color configuration: the field and the row icon show the
+  // hue wheel instead of pickers.
+  byId(card(), "plugin-config-icon-asking-effect").props.onChange("rainbow");
+  const rainbowField = byId(card(), "plugin-config-icon-asking-colors");
+  const rainbowIcon = findAll(card(), (n) => n.type === primitivesStub.DisclosureRow && n.props.title === "Asking")[0].props.icon;
+  const rainbowTree = rainbowField.type(rainbowField.props);
+  // The stub collapses a single child to the child itself, so normalize it.
+  const iconLayers = Array.isArray(rainbowIcon.props.children) ? rainbowIcon.props.children : [rainbowIcon.props.children];
+  const rainbowInputs = findAll(rainbowTree, (n) => n.type === "input" && n.props.type === "color");
+  ok("F39 rainbow shows the hue wheel plus one optional starting-hue chip",
+    rainbowField.props.rainbow === true &&
+    // exactly one colour is carried: the hue seed the browser sweeps from
+    rainbowField.props.colors.length === 1 && rainbowField.props.canAdd === false &&
+    rainbowInputs.length === 1 &&
+    // no add / remove affordances for a colour list that does not exist
+    findAll(rainbowTree, (n) => n.type === "button").length === 0 &&
+    // the field preview is a 20px disc
+    findAll(rainbowTree, (n) => n.props && n.props.style && n.props.style.borderRadius === 999 &&
+      n.props.style.width === 20 && n.props.style.height === 20).length === 1 &&
+    iconLayers.length === 1 &&
+    String(iconLayers[0].props.style.background).indexOf("linear-gradient(135deg,") === 0 &&
+    String(iconLayers[0].props.style.backgroundImage).indexOf("conic-gradient(from 0deg,") === 0,
+    JSON.stringify({
+      rainbow: rainbowField.props.rainbow,
+      colors: rainbowField.props.colors,
+      inputs: rainbowInputs.length,
+      buttons: findAll(rainbowTree, (n) => n.type === "button").length,
+      icon: iconLayers[0] && iconLayers[0].props.style.background,
+    }));
+
+  // The starting-hue chip rewrites colors[0] alone (rainbow never carries a
+  // second colour), so the sweep begins at the picked hue.
+  rainbowInputs[0].props.onChange({ target: { value: "#0066ff" } });
+  writes.length = 0;
+  findButton(card(), "Save").props.onClick();
+  await tick();
+  const seedWrite = ((writes[0] && writes[0].ops) || []).find((o) => o.path.join(".") === "states");
+  ok("F39b the starting-hue chip saves a single-colour rainbow state",
+    !!seedWrite && seedWrite.value.asking.effect === "rainbow" &&
+    seedWrite.value.asking.colors.join(",") === "#0066ff",
+    JSON.stringify(seedWrite && seedWrite.value.asking));
+
+  // rainbow keeps exactly one stored colour: the hue seed the browser's
+  // frameColor() starts from. Switching a two-colour state (asking is blink
+  // with #E5484D ⇄ #FACC15) to rainbow must TRIM the stored list to that one
+  // seed — this is the save-side half of "only what the effect uses is kept".
+  byId(card(), "plugin-config-icon-asking-effect").props.onChange("rainbow");
+  writes.length = 0;
+  findButton(card(), "Save").props.onClick();
+  await tick();
+  const rainbowWrite = ((writes[0] && writes[0].ops) || []).find((o) => o.path.join(".") === "states");
+  ok("F40 switching blink -> rainbow trims the stored colours to the single hue seed",
+    !!rainbowWrite && rainbowWrite.value.asking.effect === "rainbow" &&
+    rainbowWrite.value.asking.colors.join(",") === "#E5484D",
+    JSON.stringify(rainbowWrite && rainbowWrite.value.asking));
+
+  // The card duplicates the host's built-in per-state colours (it cannot import
+  // lib/index.js). Pin the copy to plugin.config.states so the two can never
+  // drift: a drift would make the card warn about a colour the host never paints.
+  let cardStates = null;
+  try {
+    // extractBlock() balances braces, so a reformat or a nested literal cannot
+    // break this the way a hand-rolled substring slice would.
+    const block = extractBlock(CLIENT_SRC, "var DEFAULT_STATES = ");
+    cardStates = eval("(" + block.slice(block.indexOf("{")) + ")");
+  } catch (err) {
+    cardStates = null; // reported as a failure below, never an aborted suite
+  }
+  // The ΔE thresholds and the accepted-hex regex are duplicated by design (no
+  // shared module, no build step): pin them together so tuning one half cannot
+  // silently change the other's verdicts.
+  const constOf = (src, name) => {
+    const m = src.match(new RegExp("(?:const|let|var)\\s+" + name + "\\s*=\\s*([^;]+);"));
+    return m ? m[1].trim() : null;
+  };
+  const sharedConstants = ["SIMILAR_DE_STRONG", "SIMILAR_DE_WARN", "RAINBOW_CHROMA_MIN", "DEFAULT_COLOR_RX"];
+  ok("F42 the duplicated thresholds / hex regex match between the two halves",
+    sharedConstants.every((n) => constOf(SRC, n) !== null && constOf(SRC, n) === constOf(CLIENT_SRC, n)),
+    JSON.stringify(sharedConstants.map((n) => [n, constOf(SRC, n), constOf(CLIENT_SRC, n)])));
+
+  ok("F41 the card's built-in state table mirrors the host DEFAULTS (effect + colors + speed)",
+    !!cardStates &&
+    Object.keys(cardStates).length === Object.keys(plugin.config.states).length &&
+    Object.keys(cardStates).every((k) => {
+      const host = plugin.config.states[k];
+      return cardStates[k].effect === host.effect &&
+        JSON.stringify(cardStates[k].colors) === JSON.stringify(host.colors) &&
+        cardStates[k].speed === host.speed;
+    }),
+    JSON.stringify({ card: cardStates, host: plugin.config.states }));
+
+  // ---- the "+" chip: derived seed, no duplicates, room-only -----------------
+  // done is static (one colour) and has room for a second; switching it to
+  // breath is the exact state that should offer the add chip.
+  byId(card(), "plugin-config-icon-done-effect").props.onChange("breath");
+  const addField = byId(card(), "plugin-config-icon-done-colors");
+  ok("F43 a single-colour list has room, so the add chip appears",
+    addField.props.canAdd === true && addField.props.colors.join(",") === "#22A06B",
+    JSON.stringify({ canAdd: addField.props.canAdd, colors: addField.props.colors }));
+  const addTree = addField.type(addField.props);
+  const addInputs = findAll(addTree, (n) => n.type === "input" && n.props.type === "color");
+  // The add picker opens on the colour the browser derives anyway
+  // (mix(#22A06B, black, 35%)), so confirming it as-is is meaningful.
+  ok("F43b the add picker opens on the derived second colour",
+    addInputs.length === 2 && addInputs[1].props.value === "#166846",
+    JSON.stringify(addInputs.map((i) => i.props.value)));
+  // Re-materialize before every edit: a handler captured from an earlier tree
+  // closes over the OLD colour list, which would mask a real append bug.
+  const addInputsOf = () => {
+    const field = byId(card(), "plugin-config-icon-done-colors");
+    return findAll(field.type(field.props), (n) => n.type === "input" && n.props.type === "color");
+  };
+  addInputsOf()[1].props.onChange({ target: { value: "#22a06b" } }); // already present, lower-case
+  ok("F43c an already-present colour is not appended",
+    byId(card(), "plugin-config-icon-done-colors").props.colors.length === 1,
+    JSON.stringify(byId(card(), "plugin-config-icon-done-colors").props.colors));
+  addInputsOf()[1].props.onChange({ target: { value: "#00c8ff" } });
+  ok("F43d a new colour is appended as the second one",
+    byId(card(), "plugin-config-icon-done-colors").props.colors.join(",") === "#22A06B,#00c8ff",
+    JSON.stringify(byId(card(), "plugin-config-icon-done-colors").props.colors));
+
+  // ---- reset also neutralizes a COMPOSITION-ENTRY defaultColor --------------
+  // `scope.unset` cannot reach the base layer, so a base-provided defaultColor
+  // would survive "Reset to defaults" and the field would look untouched.
+  snapshot.base = { defaultColor: "#FACC15" };
+  snapshot.user = {};
+  snapshot.value.defaultColor = "#FACC15";
+  byId(card(), "plugin-config-icon-asking-hold").props.onChange("3500"); // force a render
+  writes.length = 0;
+  findButton(card(), "Reset to defaults").props.onClick();
+  await tick();
+  const idleOwnColor = snapshot.value.states.idle.colors[0];
+  const resetOps = writes.map((w) => w.op + ":" + w.field + (w.value !== undefined ? "=" + w.value : ""));
+  ok("F44 a reset rewrites a base-layer defaultColor to the idle colour",
+    resetOps.indexOf("set:defaultColor=" + idleOwnColor) !== -1 &&
+    resetOps.indexOf("unset:states") !== -1,
+    JSON.stringify(resetOps));
+
+  // ---- clear-override persists as an unset ----------------------------------
+  snapshot.base = {};
+  snapshot.user = { defaultColor: "#FACC15" };
+  snapshot.value.defaultColor = "#FACC15";
+  byId(card(), "plugin-config-icon-asking-hold").props.onChange("3500"); // force a render
+  const clearField = byId(card(), "plugin-config-icon-default-color");
+  ok("F45 the clear-override control is offered for a user-layer value",
+    typeof clearField.props.onClear === "function", String(clearField.props.clearLabel));
+  clearField.props.onClear();
+  writes.length = 0;
+  findButton(card(), "Save").props.onClick();
+  await tick();
+  const clearOps = ((writes[0] && writes[0].ops) || []);
+  ok("F45b clearing the override saves an unset of defaultColor",
+    clearOps.some((o) => o.op === "unset" && o.path.join(".") === "defaultColor"),
+    JSON.stringify(writes));
+
+  // ---- a save with nothing to write settles the form ------------------------
+  snapshot.user = {};
+  snapshot.value.defaultColor = null;
+  byId(card(), "plugin-config-icon-asking-hold").props.onChange("3500"); // same as resolved
+  writes.length = 0;
+  const noopSave = findButton(card(), "Save");
+  ok("F46 a draft equal to the resolved value keeps Save enabled", noopSave.props.disabled === false);
+  noopSave.props.onClick();
+  await tick();
+  ok("F46b a no-op save writes nothing and clears the draft",
+    writes.length === 0 && findButton(card(), "Save").props.disabled === true,
+    JSON.stringify({ writes, disabled: findButton(card(), "Save").props.disabled }));
+
+  // ---- the rainbow warning needs a CHROMATIC default ------------------------
+  snapshot.value.defaultColor = "#1a1a1a"; // neutral: no hue to collide with
+  snapshot.value.states.done = { effect: "rainbow", colors: ["#22A06B"] };
+  byId(card(), "plugin-config-icon-asking-hold").props.onChange("3500");
+  const neutralLines = warnTexts(card());
+  ok("F47 a neutral default colour raises no rainbow warning",
+    neutralLines.length === 0, JSON.stringify(neutralLines));
+  snapshot.value.defaultColor = "#E5484D";
+  byId(card(), "plugin-config-icon-asking-hold").props.onChange("3500");
+  ok("F47b a chromatic default colour raises the rainbow warning",
+    warnTexts(card()).some((line) => line.includes("rainbow")), JSON.stringify(warnTexts(card())));
+
+  // ---- the warning judges the fills the effect actually paints --------------
+  // blink with a single colour: the browser derives mix(c0, #000, 35%).
+  snapshot.value.defaultColor = "#952F32";
+  snapshot.value.states.asking = { effect: "blink", colors: ["#E5484D"], speed: 400 };
+  snapshot.value.states.done = { effect: "static", colors: ["#22A06B"] };
+  byId(card(), "plugin-config-icon-asking-hold").props.onChange("3500");
+  ok("F48 the derived second fill of a one-colour blink is compared",
+    warnTexts(card()).some((line) => line.includes("Asking") && line.includes("#952f32")),
+    JSON.stringify(warnTexts(card())));
+  // breath interpolates: the midpoint of #E5484D ⇄ #FFFFFF is a real frame.
+  snapshot.value.defaultColor = "#F2A4A6";
+  snapshot.value.states.asking = { effect: "breath", colors: ["#E5484D", "#FFFFFF"] };
+  byId(card(), "plugin-config-icon-asking-hold").props.onChange("3500");
+  ok("F48b the breath interpolation is sampled",
+    warnTexts(card()).some((line) => line.includes("Asking") && line.includes("#f2a4a6")),
+    JSON.stringify(warnTexts(card())));
+
+  // ---- a partially invalid stored list keeps its valid entries --------------
+  snapshot.value.defaultColor = "#FF0000";
+  snapshot.value.states.asking = { effect: "static", colors: ["#FF0000", "red"] };
+  byId(card(), "plugin-config-icon-asking-hold").props.onChange("3500");
+  const partialField = byId(card(), "plugin-config-icon-asking-colors");
+  const partialLines = warnTexts(card());
+  ok("F49 the card keeps the valid entries of a partially invalid list",
+    partialField.props.colors.join(",") === "#FF0000" &&
+    partialLines.some((line) => line.includes("Asking") && line.toLowerCase().includes("#ff0000")) &&
+    !partialLines.some((line) => line.toLowerCase().includes("#facc15")),
+    JSON.stringify({ colors: partialField.props.colors, lines: partialLines }));
+
+  // ---- a PARTIAL resolved states dict must read like what the host paints ----
+  // The card writes only the states it drafted, so `value.states` really can
+  // omit `asking`; the host still blinks it with the built-in config, and the
+  // card used to show "Static" + a dashed chip there — then SAVE that "static"
+  // over the user's config on the next colour edit.
+  snapshot.base = {};
+  snapshot.user = { states: { running: { effect: "bounce", colors: ["#FF0000"] } } };
+  snapshot.value = {
+    askingHoldMs: 3500,
+    doneHoldMs: 5000,
+    defaultColor: null,
+    states: { running: { effect: "bounce", colors: ["#FF0000"] } },
+  };
+  byId(card(), "plugin-config-icon-asking-hold").props.onChange("3500"); // force a render
+  ok("F50 a state missing from the resolved dict falls back to the built-in config",
+    byId(card(), "plugin-config-icon-asking-effect").props.value === "blink" &&
+    byId(card(), "plugin-config-icon-asking-colors").props.colors.join(",") === "#E5484D,#FACC15",
+    JSON.stringify({
+      effect: byId(card(), "plugin-config-icon-asking-effect").props.value,
+      colors: byId(card(), "plugin-config-icon-asking-colors").props.colors,
+    }));
+  writes.length = 0;
+  byId(card(), "plugin-config-icon-asking-colors").props.onColors(["#123456", "#FACC15"]);
+  findButton(card(), "Save").props.onClick();
+  await tick();
+  const partialWrite = ((writes[0] && writes[0].ops) || []).find((o) => o.path.join(".") === "states");
+  ok("F50b a colour edit on that state keeps the built-in effect",
+    !!partialWrite && partialWrite.value.asking.effect === "blink" &&
+    partialWrite.value.asking.colors.join(",") === "#123456,#FACC15",
+    JSON.stringify(partialWrite && partialWrite.value.asking));
+
+  // ---- those two host behaviours again, on the card side --------------------
+  snapshot.user = {};
+  snapshot.value = {
+    askingHoldMs: 3500,
+    doneHoldMs: 5000,
+    defaultColor: "#005aa5",
+    states: { running: { effect: "breath", colors: ["#0000ff", "#00ff00"] } },
+  };
+  byId(card(), "plugin-config-icon-asking-hold").props.onChange("3500");
+  const breathLine = warnTexts(card()).find((line) => line.includes("Running"));
+  const breathDe = breathLine ? Number((breathLine.match(/ΔE ([0-9.]+)/) || [])[1]) : NaN;
+  ok("F51 the card samples the breath gradient as densely as the host",
+    !!breathLine && breathDe < 8, JSON.stringify({ breathLine, breathDe }));
+
+  snapshot.value = {
+    askingHoldMs: 3500,
+    doneHoldMs: 5000,
+    defaultColor: "#ff0000",
+    states: { idle: { effect: "rainbow", colors: ["#1a1a1a"] } },
+  };
+  byId(card(), "plugin-config-icon-asking-hold").props.onChange("3500");
+  const idleRainbowLines = warnTexts(card());
+  ok("F52 idle running rainbow warns on the card side too (host parity)",
+    idleRainbowLines.length === 1 && idleRainbowLines[0].includes("rainbow") && idleRainbowLines[0].includes("Idle"),
+    JSON.stringify(idleRainbowLines));
+
+  // ---- reset leaves the deployment value one click away ---------------------
+  snapshot.base = { defaultColor: "#FACC15" };
+  snapshot.user = {};
+  snapshot.value = { askingHoldMs: 3500, doneHoldMs: 5000, defaultColor: "#FACC15", states: {} };
+  byId(card(), "plugin-config-icon-asking-hold").props.onChange("3500");
+  const baseOnlyField = byId(card(), "plugin-config-icon-default-color");
+  ok("F53 a base-layer value offers no clear-override control",
+    !baseOnlyField.props.onClear, String(baseOnlyField.props.clearLabel));
+  writes.length = 0;
+  findButton(card(), "Reset to defaults").props.onClick();
+  await tick();
+  // The reset writes an explicit user-layer value (the idle colour), so the
+  // control that takes the user back to the deployment value comes back.
+  snapshot.user = { defaultColor: "#1a1a1a" };
+  snapshot.value.defaultColor = "#1a1a1a";
+  byId(card(), "plugin-config-icon-asking-hold").props.onChange("3500");
+  ok("F53b after the reset the clear-override control reappears",
+    typeof byId(card(), "plugin-config-icon-default-color").props.onClear === "function",
+    String(byId(card(), "plugin-config-icon-default-color").props.clearLabel));
+
+  // ---- the cycle field follows the effect -----------------------------------
+  snapshot.base = {};
+  snapshot.user = {};
+  snapshot.value = { askingHoldMs: 3500, doneHoldMs: 5000, defaultColor: null, states: {} };
+  byId(card(), "plugin-config-icon-asking-effect").props.onChange("blink");
+  const speedField = byId(card(), "plugin-config-icon-asking-speed");
+  ok("F54 an animated state exposes its cycle field, seeded from the built-in default",
+    !!speedField && speedField.props.value === "400",
+    JSON.stringify(speedField && speedField.props.value));
+  speedField.props.onChange("");
+  writes.length = 0;
+  findButton(card(), "Save").props.onClick();
+  await tick();
+  const speedWrite = ((writes[0] && writes[0].ops) || []).find((o) => o.path.join(".") === "states");
+  ok("F54b a blank cycle drops the key (the built-in cycle applies again)",
+    !!speedWrite && speedWrite.value.asking.speed === undefined &&
+    speedWrite.value.asking.effect === "blink",
+    JSON.stringify(speedWrite && speedWrite.value.asking));
+  byId(card(), "plugin-config-icon-done-effect").props.onChange("static");
+  ok("F54c a static effect hides the cycle field",
+    !byId(card(), "plugin-config-icon-done-speed"));
+
+  // ---- the add chip's edge cases the mutation run proved unpinned -------------
+  // #0c8 and #00cc88 are the SAME colour: picking the long spelling must not
+  // append a duplicate band.
+  snapshot.user = {};
+  snapshot.value = {
+    askingHoldMs: 3500,
+    doneHoldMs: 5000,
+    defaultColor: null,
+    states: { done: { effect: "breath", colors: ["#0c8"] } },
+  };
+  // F54c left an unsaved "static" draft on done -> drop it, or the field would
+  // render for that draft instead of the stored breath effect.
+  findButton(card(), "Discard").props.onClick();
+  byId(card(), "plugin-config-icon-asking-hold").props.onChange("3500");
+  const addInputsNow = () => {
+    const field = byId(card(), "plugin-config-icon-done-colors");
+    return findAll(field.type(field.props), (n) => n.type === "input" && n.props.type === "color");
+  };
+  addInputsNow()[1].props.onChange({ target: { value: "#00cc88" } });
+  ok("F55 a 3-digit spelling counts as the same colour",
+    byId(card(), "plugin-config-icon-done-colors").props.colors.length === 1,
+    JSON.stringify(byId(card(), "plugin-config-icon-done-colors").props.colors));
+
+  // An unusable stored colour shows the dashed replacement chip and NO add chip:
+  // "add a second color" is nonsense with zero colours.
+  snapshot.value = {
+    askingHoldMs: 3500,
+    doneHoldMs: 5000,
+    defaultColor: null,
+    states: { done: { effect: "breath", colors: ["nope"] } },
+  };
+  findButton(card(), "Discard").props.onClick(); // drop anything F55 left behind
+  byId(card(), "plugin-config-icon-asking-hold").props.onChange("3500");
+  const emptyField = byId(card(), "plugin-config-icon-done-colors");
+  const emptyTree = emptyField.type(emptyField.props);
+  ok("F56 an unusable colour list offers the dashed chip but no add chip",
+    emptyField.props.colors.length === 0 && emptyField.props.canAdd === false &&
+    findAll(emptyTree, (n) => n.type === "input" && n.props.type === "color").length === 1,
+    JSON.stringify({ colors: emptyField.props.colors, canAdd: emptyField.props.canAdd }));
 }
 
 // ---- summary ---------------------------------------------------------------

@@ -30,7 +30,7 @@ Browser tab favicon reflects the current DSH session state — `idle` / `running
 | 1 | Open the DSH Web GUI and go to **Settings / 设置**. |
 | 2 | In the **Plugins / 插件** tab, open **Plugin config / 插件配置**. |
 | 3 | Find the **Favicon indicator / 标签页图标指示器** card. |
-| 4 | Expand a state row (`idle` / `running` / `asking` / `done`) to edit **Effect / 特效**, **Colors / 颜色** (each swatch is a native color picker) and **Cycle (ms) / 周期（毫秒）** (shown only for animated states — static states have no cycle); use **Asking hold / 提问驻留** and **Done hold / 完成驻留** for the two timings. |
+| 4 | Set **Default icon color / 默认图标颜色** for the idle whale (its only knob — idle paints one color and never animates), then expand a state row (`running` / `asking` / `done`) to edit **Effect / 特效**, **Colors / 颜色** (each swatch is a native color picker) and **Cycle (ms) / 周期（毫秒）** (shown only for animated states — static states have no cycle); use **Asking hold / 提问驻留** and **Done hold / 完成驻留** for the two timings. |
 
 Changes are saved through the settings transport into the profile's `settings.yaml` and applied to the running tab within ~1 s — no reload, no restart. See [Configure](#configure) for the full key reference.
 
@@ -44,7 +44,7 @@ The four default states, exactly as they appear in the browser tab (the `asking`
 
 | State | Default color | Default effect |
 | --- | --- | --- |
-| `idle` | `#1a1a1a` — deep whale | `static` |
+| `idle` | `#1a1a1a` — deep whale (replaceable with `defaultColor`) | `static` |
 | `running` | `#FACC15` — yellow | `static` |
 | `asking` | `#E5484D` ⇄ `#FACC15` — red/yellow | `blink` (400 ms) |
 | `done` | `#22A06B` — green | `static`, stays `doneHoldMs`, then back to `idle` |
@@ -129,6 +129,7 @@ they are intentionally **not** part of the settings surface (`settings.yaml`).
 | `iconPathPrefix` | `/dsh-web-icon-indicator` | URL prefix `base.svg` is served under — **registration-time (composition entry only)** |
 | `askingHoldMs` | `3500` | Minimum visibility of the asking state |
 | `doneHoldMs` | `5000` | Time the done state stays before falling back to idle |
+| `defaultColor` | *(unset)* | Default icon color (the idle whale's primary) — tell multiple DSH instances apart. Warns when it is too close to another state's color |
 | `states` | see below | Per-state visual config |
 
 Each entry in `states` is one object per state: `{ effect, colors[], speed? }`:
@@ -143,8 +144,14 @@ config:
 ```
 
 - **`effect`** — one of `static | blink | breath | rainbow | heartbeat | bounce`.
-- **`colors`** — an **array** of hex colors. `colors[0]` is the primary. Multi-color effects read more entries: `blink` uses `colors[0]`⇄`colors[1]`, `breath` breathes `colors[0]`⇄`colors[1]` (each derives a darker second color if omitted), `rainbow` uses only `colors[0]` as the starting hue.
+- **`colors`** — an **array** of hex colors (`#rgb` / `#rrggbb`; a malformed entry is ignored, and the state's built-in colour applies when none survives). `colors[0]` is the primary. Multi-color effects read more entries: `blink` uses `colors[0]`⇄`colors[1]`, `breath` breathes `colors[0]`⇄`colors[1]` (each derives a darker second color if omitted), `rainbow` uses only `colors[0]` as the starting hue.
 - **`speed`** — optional per-state cycle length in ms (also the `blink` toggle interval). Default `1200`.
+
+`idle` is special: its color is the `defaultColor` key, and the settings card
+offers **no per-state entry** for it (one color, no animation, no cycle). A
+`states.idle` entry is still honored when it arrives from the composition entry
+or a hand-written `settings.yaml` — backward compatibility only; it is simply
+not editable from the card.
 
 Entries are shallow-merged over the defaults, so you can override only a few states. Example:
 
@@ -158,6 +165,44 @@ Entries are shallow-merged over the defaults, so you can override only a few sta
       done:    { effect: heartbeat, colors: ['#2ECC71'] }
 ```
 
+### Tell multiple instances apart (`defaultColor`)
+
+Running several DSH instances at once (different projects, profiles or ports)?
+Give each one its own default icon color and the browser tabs become
+immediately distinguishable — no need to touch the per-state palette:
+
+```yaml
+- id: dsh-web-icon-indicator
+  name: 'dsh-web-icon-indicator'
+  config:
+    defaultColor: '#5B8DEF'
+```
+
+- `defaultColor` is the **idle whale's primary color**. It is folded into
+  `states.idle.colors[0]`, so the idle state keeps its effect and any second
+  color you configured; the other states keep their signal colors. Unset (the
+  default) means "the idle state's own color", i.e. today's behavior.
+- It is a **per-DSH-instance** setting, not per browser tab: every tab of one
+  instance shares it, while another instance (its own profile /
+  `settings.yaml`, e.g. `dsh web --port 3081`) can use a different color.
+- **Reset** removes your overrides back to the composition entry. When the
+  color comes from that entry (the `base` layer, which an `unset` cannot
+  reach), the card writes the idle state's own color instead — so "Reset to
+  defaults" really returns the icon to the plain whale color, and the entry's
+  value stays reachable through the clear-override control.
+- **Similarity warning.** When the default color is perceptually too close to
+  another state's color you get a warning — live in the settings card, in the
+  host log, and as `warnings` on the status endpoint — but the value is still
+  applied (the warning never blocks saving). Distance is **CIE76 ΔE in
+  CIELAB**: `ΔE < 25` warns, `ΔE < 12` is reported as nearly identical
+  (`ΔE 2.3` is the just-noticeable difference). Every fill a state actually
+  paints is considered: the `asking` blink covers both of its colors,
+  `breath` its interpolation, and a `rainbow` state is flagged for any
+  chromatic default because it sweeps every hue. The shipped `running` and
+  `asking` colors deliberately share `#FACC15`, so states are never compared
+  with each other — only the default color against them. A malformed value is
+  ignored (and reported) rather than painted.
+
 ### Settings page & `settings.yaml` (DSH ≥ 0.1.2)
 
 The plugin registers the whole config surface above with the DSH settings
@@ -165,11 +210,26 @@ service under the `web-icon-indicator` namespace (a schemastery schema in
 `lib/index.js`):
 
 - **Web GUI:** open **设置 → 插件 → 插件配置** — a *Favicon indicator* card
-  edits the same keys (asking/done hold, and per-state effect / colors /
-  cycle), staged and saved through the settings transport. Each state is a
-  collapsible row showing a color dot and a one-line summary (`blink ·
-  #E5484D ⇄ #FACC15 · 400ms`); expanding a row reveals its three fields, and
-  the colors field previews parsed swatches live.
+  edits the same keys: asking/done hold, the **default icon color** (with a
+  live palette preview and the similarity warning), and the per-state effect /
+  colors / cycle for `running` / `asking` / `done`. Each of those states is a
+  collapsible row whose header shows one **color chip** per state — split in two
+  for a multi-color state, so `asking` shows red | yellow at a glance — plus a
+  one-line summary of the effect and cycle (`Blink · 400ms`). Clicking a chip
+  opens the native color picker, which is where the hex value is shown/typed;
+  the card prints no colour codes itself, except in the similarity warning,
+  which names the offending hex to be actionable (e.g. `… Running color #FACC15
+  (ΔE 0)`). The expanded row lists one chip per
+  color the chosen effect actually uses: `blink` / `breath` get a `+` chip while
+  there is still room for a second color (it opens on the darker shade the
+  browser would derive anyway, and never appends a color the state already has),
+  every color after the first can be removed, and a single-color effect shows —
+  and saves — only one chip, so an unused second color can never linger
+  invisibly. `rainbow` carries no color list: its field and its chip show the
+  hue wheel, next to an optional chip for the **starting hue** (the stored
+  `colors[0]`). `idle` deliberately gets **no row** — it paints one
+  color and never animates, so the default-color field is its whole
+  configuration. Everything is staged and saved through the settings transport.
 - **Persistence:** values land in the profile's `settings.yaml` (default
   `~/.dsh/settings.yaml`) as a `web-icon-indicator:` section. The composition
   entry stays the `base` layer; resolution order is schema defaults →

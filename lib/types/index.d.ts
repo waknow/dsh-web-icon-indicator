@@ -10,6 +10,7 @@
 *   config:
 *     askingHoldMs: 3500
 *     doneHoldMs: 5000
+*     defaultColor: '#5B8DEF'   # per-instance default icon color
 *     states:
 *       idle:    { effect: static, colors: ['#1a1a1a'] }
 *       running: { effect: static, colors: ['#FACC15'] }
@@ -81,7 +82,29 @@ export interface DshWebIconIndicatorConfig {
   askingHoldMs?: number;
   /** Time the done state stays before falling back to idle, in milliseconds. Default 5000. */
   doneHoldMs?: number;
-  /** Per-state visual config. Each entry is shallow-merged over its default. */
+  /**
+   * Default icon color — the idle whale's primary color, as `#rgb` / `#rrggbb`.
+   * Absent keeps the idle state's own `colors[0]` (the behavior before this key
+   * existed). Give each DSH instance a different value to tell their browser
+   * tabs apart: it is per instance (profile / `settings.yaml`), not per tab.
+   *
+   * Folded into `states.idle.colors[0]` at resolve time, so an idle entry that
+   * only needs its default is untouched. This is the **only** idle knob the
+   * settings card offers: idle paints one color and takes no animation, so it
+   * gets no per-state row (no effect / colors / cycle). A value perceptually too
+   * close to another state's color raises an advisory warning (settings card,
+   * host log, and {@link DshWebIconIndicatorAggregate.warnings}) but is still
+   * applied; a malformed value is ignored and reported.
+   */
+  defaultColor?: string;
+  /**
+   * Per-state visual config. Each entry is shallow-merged over its default.
+   *
+   * `idle` is not editable from the settings card (its color is
+   * {@link defaultColor}); a `states.idle` entry arriving from the composition
+   * entry or a hand-written `settings.yaml` is still honored for backward
+   * compatibility — including an idle `effect` and a second color.
+   */
   states?: Partial<Record<DshWebIconStateName, DshWebIconStateConfig>>;
 }
 
@@ -104,6 +127,39 @@ export interface DshWebIconIndicatorAggregate {
    * reload). Added in 0.2.x; older browser bundles ignore it.
    */
   states: Partial<Record<DshWebIconStateName, DshWebIconStateConfig>>;
+  /**
+   * Effective default icon color (normalized to lowercase 6-digit hex), or
+   * `null` when none is configured — the status payload always carries the key.
+   * Added with the `defaultColor` key; older browser bundles ignore the extra
+   * field.
+   */
+  defaultColor: string | null;
+  /**
+   * Advisory default-color warnings, echoed so any surface can show them.
+   * Added with the `defaultColor` key; older browser bundles ignore the key.
+   */
+  warnings: DshWebIconColorWarning[];
+}
+
+/**
+ * A perceptual-distance warning about the effective default icon color.
+ * Advisory only — the configured value is still applied.
+ */
+export interface DshWebIconColorWarning {
+  /** `color-too-close` | `rainbow-overlap` | `invalid-color`. */
+  code: "color-too-close" | "rainbow-overlap" | "invalid-color";
+  /** The other state involved (absent for `invalid-color`). */
+  state?: DshWebIconStateName;
+  /** The effective default color the warning is about. */
+  base?: string;
+  /** The colliding state color (absent for `rainbow-overlap` / `invalid-color`). */
+  color?: string;
+  /** CIE76 ΔE between `base` and `color`. */
+  deltaE?: number;
+  /** `strong` below ΔE 12; `warn` below ΔE 25. */
+  level?: "strong" | "warn";
+  /** The rejected raw value (only for `invalid-color`). */
+  value?: string;
 }
 
 /**
