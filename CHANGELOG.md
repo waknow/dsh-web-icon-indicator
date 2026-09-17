@@ -7,40 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/waknow/dsh-web-icon-indicator/compare/v0.4.2...v0.5.0) (2026-09-17)
+
+### Added
+
+* add GitHub Pages showcase site with live bilingual demos ([92ecd70](https://github.com/waknow/dsh-web-icon-indicator/commit/92ecd705217bf3e3a2f52edb86a05665c4ed5b08))
+* add skills-lock.json to manage skill dependencies ([935ad4c](https://github.com/waknow/dsh-web-icon-indicator/commit/935ad4c90a1ba5e6c969ad21dc52c5fbff516c1e))
+* per-instance default icon colour with a similarity warning ([a673c10](https://github.com/waknow/dsh-web-icon-indicator/commit/a673c109b622a074b4d4018caa104cbfb819f149))
+
 ### Fixed
 
-* asking pin can no longer lose its release timer when a second
-  `ask_user_question` pre-execute lands during a re-arm (the stored handle was
-  cancelled unconditionally, including the one being re-armed)
-* `statusPath` / `iconPathPrefix` are no longer part of the settings schema: they
-  are baked into the route table and the injected script at registration time, so
-  a settings-document edit could never be honored and would leave the tab polling
-  a path the server does not serve
-* browser requests are deadline-bounded (`AbortController`, 8 s) so a hung fetch
-  can no longer freeze the poll chain or the `base.svg` load
-* the full-frame count block renders even when `base.svg` is unavailable — only
-  the whale path waits for the template
-* `npm test` now works from the published tarball (`test/` ships; the repo-only
-  `demo/badge.html` checks skip gracefully)
+* harden host/browser behavior and stop advertising unbakeable settings ([5dddbb8](https://github.com/waknow/dsh-web-icon-indicator/commit/5dddbb87c387c8e85785c1d298453919213492d9))
+* repaint favicon instantly when the tab becomes visible ([cd5dfaf](https://github.com/waknow/dsh-web-icon-indicator/commit/cd5dfafdd79f330f775ea35a0a9163ad7ed838cb))
 
 ### Changed
 
-* the pending-approval fold reads the session log incrementally (per-agent
-  `snapshotEvents(fromSeq)` cursor) instead of cloning and deep-freezing the
-  whole log on every 1 s status poll
-* the settings card saves through one atomic `scope.mutate` (single revision
-  fence, validation, persistence and recovery read) instead of N field writes
-* frame data URIs are memoized per fill for `static` / `blink` / `breath` and the
-  geometric effects, so the 3.6 kB base template is no longer re-encoded on every
-  animation frame (`rainbow` stays uncached — its fill changes every frame)
-* `resolveConfig` ignores `undefined` values instead of letting them shadow a
-  `DEFAULTS` entry
-* dropped the unused `sandboxPolicy` injection; documented the fixed 1 s poll
-  interval; GitHub Pages workflow actions bumped to match `publish.yml`
-* test suite grew from 87 to 137 checks: browser-half smoke test for
-  `lib/client.js` (loader contract, slot registration, card render, atomic save,
-  reset) plus coverage for `heartbeat` / `bounce` / `breath`, hidden-tab
-  self-heal, count-block-without-template and abort recovery
+* pin the registration-time route keys and sync the workflow docs ([de370c5](https://github.com/waknow/dsh-web-icon-indicator/commit/de370c54d3b0777d028bd6ba871756202496c76d))
 
 ## [0.4.2](https://github.com/waknow/dsh-web-icon-indicator/compare/v0.4.1...v0.4.2) (2026-09-07)
 
@@ -58,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 * document declaring/updating the DSH host requirement (engines.dsh) ([fb568b7](https://github.com/waknow/dsh-web-icon-indicator/commit/fb568b71362b4931712240087213845cfb3b76ee))
+
 ## [0.4.0](https://github.com/waknow/dsh-web-icon-indicator/compare/v0.3.1...v0.4.0) (2026-09-04)
 
 ### Added
@@ -68,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * auto-create GitHub Release after successful npm publish ([02d98e3](https://github.com/waknow/dsh-web-icon-indicator/commit/02d98e3db9f83013a3e7667c6a0848efecb8ef37))
 * note DSH 0.1.2 support and add a version-support banner ([cd42d2c](https://github.com/waknow/dsh-web-icon-indicator/commit/cd42d2c5b5650800e3620c5806b1b4ac2b25c84f))
+
 ## [0.3.1](https://github.com/waknow/dsh-web-icon-indicator/compare/v0.3.0...v0.3.1) (2026-09-02)
 
 ### Fixed
