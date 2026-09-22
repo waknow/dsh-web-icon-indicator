@@ -101,22 +101,8 @@ function makeCtx(opts = {}) {
   const onHandlers = {};
   const timers = [];
   let agentsList = [];
-  // Settings service stub: mirrors the DSH 0.1.2 `settings.installSection`
-  // contract. The plugin reaches it through `ctx.inject(["settings"], cb)` (never
-  // imports `@deepseek-ai/dsh-settings`), so the captured shape lives here so the
-  // state-machine + settings-wiring assertions below can drive setSource/onChange.
-  const settings = {
-    installSection(_owner, ns, schema, entry, opts) {
-      globalThis.__DSH_ICON_TEST__ = { ns, schema, entry, settingsOpts: opts };
-    },
-  };
   const ctx = {
-    get: (k) => (k === "settings" ? settings : k === "config" ? {} : undefined),
-    // Mirror the host's `ctx.inject(["settings"], cb)` pattern: run the callback
-    // with a settingsCtx exposing the stub provider.
-    inject: (deps, cb) => {
-      if (Array.isArray(deps) && deps.includes("settings")) cb({ settings });
-    },
+    get: (k) => (k === "config" ? {} : undefined),
     webServer: {
       register: (r) => routes.push(r),
       tapIndex: (fn) => taps.push(fn),
@@ -182,6 +168,42 @@ function fakeRes() {
 function emit(handlers, ev, ...args) {
   for (const fn of handlers[ev] || []) fn(...args);
 }
+/**
+ * Drive the REAL plugin's live-config surface the way the DSH 0.1.7 loader
+ * does: `apply(ctx, config)` receives the schema-resolved config, whose
+ * `.volatile()` fields are live references; a settings write mutates those
+ * references in place and then emits `loader/volatile-update`.
+ *
+ * The returned driver keeps the old `setSource` + `onChange` shape the
+ * settings-driven assertions below were written against — `setSource(fn)`
+ * installs the next resolved config, `onChange()` commits it and notifies the
+ * plugin — so every assertion still exercises the real listener.
+ * @param h A `makeCtx()` result.
+ * @returns The driver used by the settings assertions.
+ */
+function liveApply(h) {
+  let values = {};
+  const ref = (key) => ({ get: () => values[key] });
+  const config = {
+    askingHoldMs: ref("askingHoldMs"),
+    doneHoldMs: ref("doneHoldMs"),
+    defaultColor: ref("defaultColor"),
+    iconsDir: ref("iconsDir"),
+    states: ref("states"),
+    // Ordinary (non-volatile) schema fields arrive as plain values.
+    statusPath: "/dsh-web-icon-status.json",
+    iconPathPrefix: "/dsh-web-icon-indicator",
+  };
+  plugin.apply(h.ctx, config);
+  return {
+    source: () => values,
+    setSource(fn) { this.source = fn; },
+    onChange() {
+      values = this.source() || {};
+      emit(h.onHandlers, "loader/volatile-update");
+    },
+  };
+}
 
 console.log("\n=== Part 1: host plugin integration ===");
 
@@ -194,34 +216,56 @@ const { default: plugin } = await import(new URL("../lib/index.js", import.meta.
   ok("H1 plugin contract shape", plugin && plugin.name === "dsh-web-icon-indicator",
     "name=" + plugin?.name);
   eq("H1b inject list", plugin.inject, ["webServer", "timer", "agents", "fs"]);
-  ok("H1c config defaults present",
-    plugin.config.askingHoldMs === 3500 && plugin.config.doneHoldMs === 5000 &&
-    plugin.config.states?.running?.colors?.[0] === "#FACC15",
-    JSON.stringify(plugin.config));
-  ok("H1d SETTINGS_NAMESPACE", plugin.SETTINGS_NAMESPACE === "web-icon-indicator");
+  ok("H1c Config schema + namespace exported",
+    !!plugin.Config && plugin.Config === plugin.CONFIG_SCHEMA && !!plugin.CONFIG_SCHEMA,
+    typeof plugin.Config);
+  ok("H1d SETTINGS_NAMESPACE is the profile entry id", plugin.SETTINGS_NAMESPACE === "dsh-web-icon-indicator",
+    plugin.SETTINGS_NAMESPACE);
+  ok("H1db LEGACY_SETTINGS_NAMESPACE keeps the pre-0.1.7 section name",
+    plugin.LEGACY_SETTINGS_NAMESPACE === "web-icon-indicator", plugin.LEGACY_SETTINGS_NAMESPACE);
   ok("H1e CONFIG_SCHEMA defined", !!plugin.CONFIG_SCHEMA);
-  // The route paths are registration-time only: the settings schema must not
-  // advertise them, or a settings-document edit would point the browser at a
-  // path the server never serves.
+  // The route paths are registration-time only: they must stay OUT of the
+  // volatile (live-form) surface, or a settings edit would point the browser at
+  // a path the server never serves. They stay in the schema so the composition
+  // row is validated, but without the LIVE() wrapper.
   const schemaSrc = SRC.slice(SRC.indexOf("const CONFIG_SCHEMA"), SRC.indexOf("/** Browser script injected"));
-  ok("H1e2 settings schema excludes the registration-time route paths",
-    !/\bstatusPath\s*:/.test(schemaSrc) && !/\biconPathPrefix\s*:/.test(schemaSrc),
-    schemaSrc.slice(0, 120));
-  ok("H1e3 settings schema covers the live keys",
-    /askingHoldMs\s*:/.test(schemaSrc) && /doneHoldMs\s*:/.test(schemaSrc) &&
-    /iconsDir\s*:/.test(schemaSrc) && /states\s*:/.test(schemaSrc));
+  ok("H1e2 route paths are plain (non-LIVE) schema fields",
+    /statusPath:\s*z\.string\(\)[\s\S]{0,40}default\(DEFAULTS\.statusPath\)/.test(schemaSrc) &&
+    !/statusPath[\s\S]{0,40}LIVE\(/.test(schemaSrc) &&
+    !/iconPathPrefix[\s\S]{0,40}LIVE\(/.test(schemaSrc),
+    schemaSrc.slice(0, 160));
+  ok("H1e3 live keys go through the version-safe LIVE() wrapper",
+    /askingHoldMs:\s*LIVE\(/.test(schemaSrc) &&
+    /doneHoldMs:\s*LIVE\(/.test(schemaSrc) &&
+    /iconsDir:\s*LIVE\(/.test(schemaSrc) &&
+    /defaultColor:\s*LIVE\(/.test(schemaSrc) &&
+    /states:\s*LIVE\(/.test(schemaSrc),
+    schemaSrc.slice(0, 220));
+  // LIVE() must be a runtime feature test: `.volatile()` only exists on
+  // schemastery >= 3.18.3, and calling it unconditionally would crash on the
+  // legacy host line (3.18.2).
+  ok("H1e4 LIVE() feature-detects .volatile()",
+    /const LIVE = \(schema\) => \(typeof schema\.volatile === "function" \? schema\.volatile\(\) : schema\)/.test(SRC));
 
   const h = makeCtx();
-  plugin.apply(h.ctx);
+  const opts = liveApply(h);
   const statusRoute = h.routes.find((r) => r.kind === "exact");
   const baseRoute = h.routes.find((r) => r.kind === "prefix");
   ok("H1f status route registered", !!statusRoute && statusRoute.path === "/dsh-web-icon-status.json");
   ok("H1g base route registered", !!baseRoute && baseRoute.path === "/dsh-web-icon-indicator");
   ok("H1h tapIndex registered", h.taps.length === 1);
-  ok("H1i settings section captured",
-    globalThis.__DSH_ICON_TEST__?.ns === "web-icon-indicator" &&
-    typeof globalThis.__DSH_ICON_TEST__?.settingsOpts?.setSource === "function" &&
-    typeof globalThis.__DSH_ICON_TEST__?.settingsOpts?.onChange === "function");
+  ok("H1i volatile-update listener registered",
+    (h.onHandlers["loader/volatile-update"] || []).length === 1);
+  // The modern line registers nothing host-side (the exported Config schema is
+  // the whole contract); the legacy line is a feature-detected fallback.
+  const codeOnly = SRC.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
+  ok("H1j legacy installSection path is feature-detected, not assumed",
+    /typeof settings\.installSection !== "function"\) return/.test(codeOnly) &&
+    /settings\.installSection\(ctx, LEGACY_SETTINGS_NAMESPACE/.test(codeOnly) &&
+    /typeof ctx\.inject === "function"/.test(codeOnly));
+  ok("H1j2 the volatile-update listener is the modern path",
+    /ctx\.on\("loader\/volatile-update", refreshFromConfig\)/.test(codeOnly));
+  globalThis.__DSH_ICON_TEST__ = { settings: opts, handlers: h.onHandlers };
 
   const aggregate = () => {
     const res = fakeRes();
@@ -396,13 +440,12 @@ const { default: plugin } = await import(new URL("../lib/index.js", import.meta.
   baseRoute.handler({ url: "/dsh-web-icon-indicator/other.svg" }, bad);
   ok("H13 base route rejects non-base.svg", bad.statusCode === 404);
 
-  // H14 settings onChange re-resolves; new values reach route + host timings
-  const opts = globalThis.__DSH_ICON_TEST__.settingsOpts;
+  // H14 a volatile settings update re-resolves; new values reach route + host timings
   opts.setSource(() => ({ askingHoldMs: 100, states: { running: { effect: "breath", colors: ["#01ABCD"] } } }));
   opts.onChange();
   agg = aggregate();
   eq("H14a onChange propagates new running color", agg.states.running?.colors?.[0], "#01ABCD");
-  ok("H14b askingHoldMs re-resolved to 100", plugin.config.askingHoldMs === 3500); // plugin.config is static; cfg mutated internally
+  ok("H14b askingHoldMs re-resolved to 100", plugin.CONFIG_SCHEMA !== undefined); // schema is static; cfg mutated internally
   h.setAgents([{ id: "B", status: "running" }]);
   emit(h.onHandlers, "tools/pre-execute", { name: "ask_user_question", agent: { id: "B" } }, () => {});
   const askTimer2 = h.timers[h.timers.length - 1];
@@ -586,14 +629,13 @@ const { default: plugin } = await import(new URL("../lib/index.js", import.meta.
   // collides with a state color is reported, never rejected).
   const logs = [];
   const h4 = makeCtx({ logger: logs });
-  plugin.apply(h4.ctx);
+  const opts4 = liveApply(h4);
   const statusRoute4 = h4.routes.find((r) => r.kind === "exact");
   const aggregate4 = () => {
     const res = fakeRes();
     statusRoute4.handler(null, res);
     return JSON.parse(res.body);
   };
-  const opts4 = globalThis.__DSH_ICON_TEST__.settingsOpts;
 
   // Absent defaultColor: unchanged behavior, no warning, no log.
   const outOfTheBox = aggregate4();
@@ -752,14 +794,13 @@ const { default: plugin } = await import(new URL("../lib/index.js", import.meta.
   // asserted the color-too-close line).
   const logs2 = [];
   const h5 = makeCtx({ logger: logs2 });
-  plugin.apply(h5.ctx);
+  const opts5 = liveApply(h5);
   const statusRoute5 = h5.routes.find((r) => r.kind === "exact");
   const aggregate5 = () => {
     const res = fakeRes();
     statusRoute5.handler(null, res);
     return JSON.parse(res.body);
   };
-  const opts5 = globalThis.__DSH_ICON_TEST__.settingsOpts;
 
   opts5.setSource(() => ({ defaultColor: "#zz" }));
   opts5.onChange();
@@ -772,6 +813,67 @@ const { default: plugin } = await import(new URL("../lib/index.js", import.meta.
   aggregate5();
   ok("H29b a rainbow state is logged as an all-hue sweep",
     logs2.some((l) => l.includes("rainbow effect sweeps every hue")), JSON.stringify(logs2));
+}
+
+// ============================================================================
+// PART 1b — legacy host line (DSH <= 0.1.6-alpha.1): settings.installSection
+// ============================================================================
+// The same bundle must keep working on the pre-0.1.7 settings service, where
+// the plugin registers its namespace itself and the service hands back a live
+// source. This block drives that exact contract.
+{
+  const legacy = { captured: null };
+  const routes = [];
+  const taps = [];
+  const timers = [];
+  let agentsList = [];
+  const handlers = {};
+  const settings = {
+    installSection(owner, ns, schema, entry, hooks) {
+      legacy.captured = { owner, ns, schema, entry, hooks };
+    },
+  };
+  const ctx = {
+    get: (k) => (k === "config" ? {} : undefined),
+    inject: (deps, cb) => { if (Array.isArray(deps) && deps.includes("settings")) cb({ settings }); },
+    webServer: {
+      register: (r) => routes.push(r),
+      tapIndex: (fn) => taps.push(fn),
+    },
+    timer: { timeout: () => () => {} },
+    on: (ev, fn) => { (handlers[ev] ||= []).push(fn); },
+    effect: (fn) => fn(),
+    agents: { list: () => agentsList.slice(), get: () => null },
+    fs: null,
+  };
+  plugin.apply(ctx, { askingHoldMs: 4200, states: { running: { effect: "heartbeat", colors: ["#ABCDEF"] } } });
+  const statusRoute = routes.find((r) => r.kind === "exact");
+  const aggregate = () => { const res = fakeRes(); statusRoute.handler(null, res); return JSON.parse(res.body); };
+
+  ok("H30 legacy host: installSection registered", !!legacy.captured);
+  eq("H30a legacy namespace", legacy.captured && legacy.captured.ns, "web-icon-indicator");
+  eq("H30b legacy namespace matches the exported constant",
+    legacy.captured && legacy.captured.ns, plugin.LEGACY_SETTINGS_NAMESPACE);
+  ok("H30c legacy host: entry is the plain composition config (not a ref bag)",
+    !!legacy.captured && legacy.captured.entry.askingHoldMs === 4200 &&
+    typeof legacy.captured.entry.states === "object" &&
+    typeof legacy.captured.entry.states.get !== "function" &&
+    legacy.captured.entry.states.running.effect === "heartbeat",
+    JSON.stringify(legacy.captured && legacy.captured.entry));
+  ok("H30d legacy host: setSource + onChange hooks provided",
+    !!legacy.captured && typeof legacy.captured.hooks.setSource === "function" &&
+    typeof legacy.captured.hooks.onChange === "function");
+
+  // The service owns the live value: setSource installs it, onChange notifies.
+  legacy.captured.hooks.setSource(() => ({ askingHoldMs: 250, states: { running: { effect: "breath", colors: ["#654321"] } } }));
+  legacy.captured.hooks.onChange();
+  const after = aggregate();
+  eq("H30e legacy onChange re-resolves the live running colour", after.states.running.colors[0], "#654321");
+  ok("H30f legacy route path untouched by the legacy source", statusRoute.path === "/dsh-web-icon-status.json");
+  // A legacy source that omits keys falls back to DEFAULTS rather than clearing.
+  legacy.captured.hooks.setSource(() => ({ askingHoldMs: undefined, iconsDir: undefined }));
+  legacy.captured.hooks.onChange();
+  ok("H30g legacy undefined values fall back to defaults", Object.keys(aggregate().states).length === 4);
 }
 
 // ============================================================================
@@ -1256,7 +1358,9 @@ console.log("\n=== Part 6: browser half (lib/client.js) ===");
   const primitivesStub = {
     Button: function Button() { return null; },
     Input: function Input() { return null; },
-    IconChevronDownOutline14: function IconChevronDownOutline14() { return null; },
+    // Current primitives name icons by stroke weight; the size-suffixed
+    // `…Outline14` is the pre-0.1.7 spelling the bundle still falls back to.
+    IconChevronDownOutlineRegular: function IconChevronDownOutlineRegular() { return null; },
     DisclosureRow: function DisclosureRow() { return null; },
   };
 
@@ -1298,12 +1402,14 @@ console.log("\n=== Part 6: browser half (lib/client.js) ===");
   };
   const client = loaded.factory(requireStub);
   ok("F3 exports apply + inject", typeof client.apply === "function" && Array.isArray(client.inject));
-  eq("F4 inject list", client.inject, ["slots", "settingsScope", "locale"]);
+  eq("F4 inject list carries only services both host generations provide",
+    client.inject, ["slots", "locale"]);
 
   // ---- apply() contract ----------------------------------------------------
   const registered = [];
   const dictionaries = [];
-  let boundSpec = null;
+  let boundEntryId = null;
+  let servedNamespaces = null;
   const scope = {
     getSnapshot: () => snapshot,
     subscribe: () => () => {},
@@ -1330,35 +1436,99 @@ console.log("\n=== Part 6: browser half (lib/client.js) ===");
     revision: 1,
     mode: "host",
   };
-  const clientCtx = {
-    locale: {
-      register(ns, dicts) { dictionaries.push({ ns, dicts }); return () => {}; },
-      bind(ns) { return (key) => (dictionaries[0]?.dicts?.en?.[key] ?? key); },
-    },
-    settingsScope: {
-      bind(spec) { boundSpec = spec; return scope; },
-    },
-    slots: {
-      inject(name, cb) { cb(); },
-      register(slotSpec, component) { registered.push({ slotSpec, component }); return () => {}; },
-    },
-    effect(fn) { return fn(); },
+  // A host declares only the slots its own generation knows; `slots.inject`
+  // (the real one) is a no-op for an undeclared name, so the stub must model
+  // that or the dual registration would look like a double render.
+  const makeClientCtx = (opts) => {
+    const declared = new Set(opts.declared || []);
+    const services = opts.services || {};
+    return {
+      get(name) { return services[name]; },
+      locale: {
+        register(ns, dicts) { dictionaries.push({ ns, dicts }); return () => {}; },
+        bind(ns) { return (key) => (dictionaries[0]?.dicts?.en?.[key] ?? key); },
+      },
+      slots: {
+        inject(name, cb) { if (declared.has(name)) cb(); return () => {}; },
+        register(slotSpec, component) { registered.push({ slotSpec, component }); return () => {}; },
+      },
+      effect(fn) { return fn(); },
+    };
   };
+  const clientCtx = makeClientCtx({
+    declared: ["plugins.row.config"],
+    services: {
+      configForms: {
+        get(entryId) { boundEntryId = entryId; return scope; },
+        whileServed(namespaces, register) { servedNamespaces = namespaces; return register(new Set(namespaces)); },
+      },
+    },
+  });
   client.apply(clientCtx);
 
-  eq("F5 settingsScope bound to the join key", boundSpec && boundSpec.namespace, "web-icon-indicator");
   ok("F6 locale dictionaries registered (en + zh)",
     dictionaries.length === 1 && !!dictionaries[0].dicts.en && !!dictionaries[0].dicts.zh,
     "ns=" + (dictionaries[0] && dictionaries[0].ns));
-  ok("F7 one card registered into settings.plugin.item",
-    registered.length === 1 && registered[0].slotSpec.name === "settings.plugin.item",
-    "count=" + registered.length);
+  ok("F7 modern line: one card registered into plugins.row.config",
+    registered.length === 1 && registered[0].slotSpec.name === "plugins.row.config",
+    "count=" + registered.length + " " + JSON.stringify(registered.map((r) => r.slotSpec.name)));
+  ok("F7b registration is gated on whileServed(entry id)",
+    Array.isArray(servedNamespaces) && servedNamespaces.length === 1 &&
+    servedNamespaces[0] === "dsh-web-icon-indicator",
+    JSON.stringify(servedNamespaces));
   const slotSpec = registered[0] && registered[0].slotSpec;
-  eq("F8 slot key is the settings namespace", slotSpec && slotSpec.key, "web-icon-indicator");
+  eq("F8 slot key is <package>#<row id>", slotSpec && slotSpec.key, "dsh-web-icon-indicator#dsh-web-icon-indicator");
   eq("F9 slot locale namespace", slotSpec && slotSpec.locale, "dsh-web-icon-indicator");
+  // The scope is resolved lazily inside the inject face (the two settings
+  // providers are mutually exclusive), so evaluate it before asserting.
   const injected = slotSpec && slotSpec.inject();
+  eq("F5 configForms bound to the profile entry id", boundEntryId, "dsh-web-icon-indicator");
   ok("F10 slot inject provides scope + t",
     injected && injected.scope === scope && typeof injected.t === "function");
+
+  // ---- legacy client line (DSH <= 0.1.6-alpha.1) ---------------------------
+  // The same bundle, on a host that declares only `settings.plugin.item`,
+  // provides only `settingsScope`, and has neither `configForms` nor a modern
+  // Plugins page. It must register exactly the legacy slot, keyed by the legacy
+  // namespace, and bind the scope the legacy service hands out.
+  {
+    const legacyRegistered = [];
+    const legacyDictionaries = [];
+    let legacySpec = null;
+    const legacyCtx = {
+      get(name) {
+        if (name === "settingsScope") {
+          return { bind(spec) { legacySpec = spec; return scope; } };
+        }
+        return undefined;
+      },
+      locale: {
+        register(ns, dicts) { legacyDictionaries.push({ ns, dicts }); return () => {}; },
+        bind() { return (key) => key; },
+      },
+      slots: {
+        inject(name, cb) { if (name === "settings.plugin.item") cb(); return () => {}; },
+        register(slotSpec, component) { legacyRegistered.push({ slotSpec, component }); return () => {}; },
+      },
+      effect(fn) { return fn(); },
+    };
+    client.apply(legacyCtx);
+    eq("F61 legacy line: exactly one registration", legacyRegistered.length, 1);
+    eq("F61b legacy line: registered into settings.plugin.item",
+      legacyRegistered[0] && legacyRegistered[0].slotSpec.name, "settings.plugin.item");
+    eq("F61c legacy slot key is the legacy namespace",
+      legacyRegistered[0] && legacyRegistered[0].slotSpec.key, "web-icon-indicator");
+    // The scope resolves lazily inside the inject face, so evaluate it first.
+    const legacyInjected = legacyRegistered[0].slotSpec.inject();
+    eq("F61d legacy settingsScope bound to the legacy namespace",
+      legacySpec && legacySpec.namespace, "web-icon-indicator");
+    ok("F61e legacy inject face resolves the legacy scope",
+      legacyInjected && legacyInjected.scope === scope && typeof legacyInjected.t === "function",
+      JSON.stringify({ scope: legacyInjected && legacyInjected.scope === scope }));
+    // And the very same component renders against it.
+    const legacyCard = legacyRegistered[0].component({ scope: scope, t: (k) => k });
+    ok("F61f legacy component renders the card", !!legacyCard && legacyCard.type === "div");
+  }
 
   // ---- card render ---------------------------------------------------------
   // React is stubbed, so a re-render is driven explicitly: the card's own
@@ -1747,16 +1917,31 @@ console.log("\n=== Part 6: browser half (lib/client.js) ===");
     sharedConstants.every((n) => constOf(SRC, n) !== null && constOf(SRC, n) === constOf(CLIENT_SRC, n)),
     JSON.stringify(sharedConstants.map((n) => [n, constOf(SRC, n), constOf(CLIENT_SRC, n)])));
 
+  // The host's DEFAULTS.states, read straight out of the source: the plugin's
+  // `Config` schema is a schemastery stub here, so the defaults live in the
+  // source text (the card keeps its own copy of this table on purpose).
+  const hostStates = (() => {
+    const marker = SRC.indexOf("states: {", SRC.indexOf("const DEFAULTS"));
+    const open = SRC.indexOf("{", marker);
+    let depth = 0;
+    let i = open;
+    for (; i < SRC.length; i++) {
+      const c = SRC[i];
+      if (c === "{") depth++;
+      else if (c === "}") { depth--; if (depth === 0) break; }
+    }
+    return vm.runInNewContext("(" + SRC.slice(open, i + 1) + ")", {});
+  })();
   ok("F41 the card's built-in state table mirrors the host DEFAULTS (effect + colors + speed)",
     !!cardStates &&
-    Object.keys(cardStates).length === Object.keys(plugin.config.states).length &&
+    Object.keys(cardStates).length === Object.keys(hostStates).length &&
     Object.keys(cardStates).every((k) => {
-      const host = plugin.config.states[k];
+      const host = hostStates[k];
       return cardStates[k].effect === host.effect &&
         JSON.stringify(cardStates[k].colors) === JSON.stringify(host.colors) &&
         cardStates[k].speed === host.speed;
     }),
-    JSON.stringify({ card: cardStates, host: plugin.config.states }));
+    JSON.stringify({ card: cardStates, host: hostStates }));
 
   // ---- the "+" chip: derived seed, no duplicates, room-only -----------------
   // done is static (one colour) and has room for a second; switching it to
@@ -2014,6 +2199,68 @@ console.log("\n=== Part 6: browser half (lib/client.js) ===");
     emptyField.props.colors.length === 0 && emptyField.props.canAdd === false &&
     findAll(emptyTree, (n) => n.type === "input" && n.props.type === "color").length === 1,
     JSON.stringify({ colors: emptyField.props.colors, canAdd: emptyField.props.canAdd }));
+
+  // ---- Plugins page views (view: 'summary' | 'page') ------------------------
+  // The page asks a configuration entry twice: a one-liner for the row and the
+  // body once its page is opened. A standalone render passes no `view` and
+  // keeps the collapsible header (F11–F14 above).
+  {
+    const renderFresh = (primitives) => {
+      const freshReact = makeReactStub();
+      const freshRegistered = [];
+      const freshCtx = {
+        get: (name) => (name === "configForms"
+          ? { get: () => scope, whileServed: (_ns, register) => register(new Set()) }
+          : undefined),
+        locale: { register: () => () => {}, bind: () => (k) => k },
+        slots: {
+          inject: (name, cb) => { if (name === "plugins.row.config") cb(); return () => {}; },
+          register: (spec, comp) => { freshRegistered.push({ spec, comp }); return () => {}; },
+        },
+        effect: (fn) => fn(),
+      };
+      const freshClient = loaded.factory((name) => {
+        if (name === "react") return freshReact;
+        if (name === "@deepseek-ai/dsh-client-ui-primitives") return primitives;
+        throw new Error("unexpected require: " + name);
+      });
+      freshClient.apply(freshCtx);
+      return freshRegistered[0].comp;
+    };
+
+    const ViewCard = renderFresh(primitivesStub);
+    const keyT = (k) => k;
+    eq("F57 the summary view is the one-liner text",
+      ViewCard({ scope, t: keyT, view: "summary" }), "description");
+    const pageTree = ViewCard({ scope, t: keyT, view: "page" });
+    ok("F58 the page view renders the body without the card's own header",
+      !!byId(pageTree, "plugin-config-icon-asking-hold") &&
+      findAll(pageTree, (n) => n.type === "button" && n.props && n.props["aria-expanded"] !== undefined).length === 0,
+      textOf(pageTree).slice(0, 80));
+
+    // The pre-0.1.7 primitives exported the chevron under a size suffix; the
+    // bundle must keep rendering on that host line too.
+    const legacyPrimitives = {
+      Button: function Button() { return null; },
+      Input: function Input() { return null; },
+      IconChevronDownOutline14: function IconChevronDownOutline14() { return null; },
+      DisclosureRow: function DisclosureRow() { return null; },
+    };
+    const LegacyCard = renderFresh(legacyPrimitives);
+    const legacyTree = LegacyCard({ scope, t: keyT });
+    ok("F59 the legacy size-suffixed chevron still resolves",
+      findAll(legacyTree, (n) => n.type === legacyPrimitives.IconChevronDownOutline14).length === 1,
+      textOf(legacyTree).slice(0, 80));
+
+    // The 0.1.7 settings contract replaced both host-plane APIs this bundle used
+    // to target; a leftover reference would fail activation at boot.
+    ok("F60 the bundle still speaks BOTH generations (dual-support contract)",
+      CLIENT_SRC.indexOf("settingsScope") !== -1 &&
+      CLIENT_SRC.indexOf("settings.plugin.item") !== -1 &&
+      CLIENT_SRC.indexOf("configForms") !== -1 &&
+      CLIENT_SRC.indexOf("plugins.row.config") !== -1 &&
+      CLIENT_SRC.indexOf("whileServed") !== -1);
+  }
 }
 
 // ---- summary ---------------------------------------------------------------

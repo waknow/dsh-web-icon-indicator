@@ -163,17 +163,26 @@ export interface DshWebIconColorWarning {
 }
 
 /**
- * Cordis plugin entry: `{ name, inject, config, apply, SETTINGS_NAMESPACE,
- * CONFIG_SCHEMA }`. Mount once per profile through the bundle patch
- * (`cordis.patch.yml`), never as a session-scoped agent preset.
+ * Cordis plugin entry: `{ name, inject, Config, apply, SETTINGS_NAMESPACE,
+ * LEGACY_SETTINGS_NAMESPACE, CONFIG_SCHEMA }`. Mount once per profile through
+ * the bundle patch (`cordis.patch.yml`), never as a session-scoped agent
+ * preset.
+ *
+ * `Config` is the schemastery schema the loader validates the profile row
+ * against and the host settings service projects into its live form
+ * (`.volatile()` fields only); this entry has no `config` object. The same
+ * bundle serves the legacy host line through a feature-detected
+ * `settings.installSection` registration.
  */
 declare const plugin: {
   name: "dsh-web-icon-indicator";
   inject: readonly ["webServer", "timer", "agents", "fs"];
-  config: DshWebIconIndicatorConfig;
+  Config: unknown;
   apply(ctx: unknown, config?: unknown): void;
-  /** Settings namespace carrying the config (`web-icon-indicator`). */
+  /** Settings namespace on DSH ≥ 0.1.7 (= the profile entry id). */
   SETTINGS_NAMESPACE: string;
+  /** Settings namespace on the legacy settings service (DSH ≤ 0.1.6-alpha.1). */
+  LEGACY_SETTINGS_NAMESPACE: string;
   /** Schemastery schema validating the config surface. */
   CONFIG_SCHEMA: unknown;
 };

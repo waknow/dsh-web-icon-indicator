@@ -7,7 +7,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/dsh-web-icon-indicator)](https://www.npmjs.com/package/dsh-web-icon-indicator)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-> **⚠️ DSH version support** — requires **DSH ≥ 0.1.2** (the settings-service API the configuration card uses). Built & verified against **DSH 0.1.2-rc.1**, the highest version currently tested. On **DSH < 0.1.2** the favicon still works, but the settings UI (**Settings → Plugins → Plugin config**) is unavailable.
+> **⚠️ DSH version support** — requires **DSH ≥ 0.1.2-rc.1**. One bundle serves both settings generations: **modern** (≥ 0.1.7-alpha.1: exported `Config` schema + `configForms` + `plugins.row.config`) and **legacy** (≤ 0.1.6-alpha.1: `settings.installSection` + `settingsScope` + `settings.plugin.item`). Verified on **DSH 0.1.5-rc.3** and **DSH 0.1.7-alpha.1**; on any older host the favicon still works even if the settings page is not reachable.
 
 Browser tab favicon reflects the current DSH session state — `idle` / `running` / `asking` / `done` — so you can see at a glance whether a session needs your attention, even when the tab is in the background.
 
@@ -19,7 +19,7 @@ Browser tab favicon reflects the current DSH session state — `idle` / `running
 - **One SVG, recolored & animated in the browser** — ships a single whale template ([`icons/base.svg`](./icons/base.svg)); every state, color and frame is rendered client-side as a `data:image/svg+xml` URI. No per-color icon files.
 - **Six built-in effects** — `static`, `blink`, `breath`, `rainbow`, `heartbeat`, `bounce` — all driven by JavaScript, since favicons don't play SVG CSS animations.
 - **Fully configurable, applied live** — every state's color, effect and cycle speed, plus the asking/done hold timings, apply to the running tab within ~1 s — no reload, no restart.
-- **Built-in settings UI, zero YAML** — a *Favicon indicator* card in the DSH settings page edits the whole config with live color-swatch previews and persists it to `settings.yaml` for you (path below).
+- **Built-in settings UI, zero YAML** — the *Favicon indicator* page edits the whole config with live color-swatch previews and persists it for you (modern hosts: the profile patch; legacy hosts: the profile `settings.yaml` — paths below).
 - **Background-tab & restart-proof** — animated states keep a wall-clock fallback while `requestAnimationFrame` is paused in hidden tabs, and the status poll self-heals across host restarts. Returning to a tab repaints immediately: a `visibilitychange` listener fires an instant status fetch, so a state that flipped while the tab was hidden (e.g. the `done` hold expiring) shows at once instead of waiting for the next — possibly throttled — poll tick. When the backend is stopped, the tab never loses its icon: the outage restores the shell's own favicon from an offline-safe `data:`-URI copy (or keeps the last painted frame), and the live icon returns on the first successful poll.
 - **Active-agent count at a glance** — while **more than one** agent is active (non-idle: `asking` / `running` / `done`), the favicon switches from the whale to a **full-frame number block** showing the live count (up to `99+`), colored and animated exactly like the whale would be in that state; back to the whale when 0–1 agents are active. (Same visual language as the *满幅数字* channel in [`demo/badge.html`](./demo/badge.html).)
 
@@ -27,12 +27,12 @@ Browser tab favicon reflects the current DSH session state — `idle` / `running
 
 | # | Step |
 | --- | --- |
-| 1 | Open the DSH Web GUI and go to **Settings / 设置**. |
-| 2 | In the **Plugins / 插件** tab, open **Plugin config / 插件配置**. |
-| 3 | Find the **Favicon indicator / 标签页图标指示器** card. |
+| 1 | Open the DSH Web GUI and go to **Settings / 设置** → **Plugins / 插件**. |
+| 2 | On ≥ 0.1.7: open the **dsh-web-icon-indicator** bundle and click **Configure / 配置** on its `dsh-web-icon-indicator` row. On ≤ 0.1.6-alpha.1: open **Plugin config / 插件配置** in that tab. |
+| 3 | The **Favicon indicator / 标签页图标指示器** page opens with the full form. |
 | 4 | Set **Default icon color / 默认图标颜色** for the idle whale (its only knob — idle paints one color and never animates), then expand a state row (`running` / `asking` / `done`) to edit **Effect / 特效**, **Colors / 颜色** (each swatch is a native color picker) and **Cycle (ms) / 周期（毫秒）** (shown only for animated states — static states have no cycle); use **Asking hold / 提问驻留** and **Done hold / 完成驻留** for the two timings. |
 
-Changes are saved through the settings transport into the profile's `settings.yaml` and applied to the running tab within ~1 s — no reload, no restart. See [Configure](#configure) for the full key reference.
+Changes are saved through the settings transport into the profile patch and applied to the running tab within ~1 s — no reload, no restart. See [Configure](#configure) for the full key reference.
 
 ## 🎬 Default configuration, visualized
 
@@ -120,7 +120,8 @@ Or drop the directory into `~/.dsh/profiles/web/node_modules/<name>/` and ship a
 All keys are optional; defaults shown. `statusPath` and `iconPathPrefix` are
 **registration-time** keys: set them in the composition entry only — they are
 baked into the route table and the injected script when the plugin mounts, so
-they are intentionally **not** part of the settings surface (`settings.yaml`).
+they are intentionally **not** part of the settings page's live form (they are
+`Config` fields, but not `.volatile()`).
 
 | Key | Default | Meaning |
 | --- | --- | --- |
@@ -150,8 +151,8 @@ config:
 `idle` is special: its color is the `defaultColor` key, and the settings card
 offers **no per-state entry** for it (one color, no animation, no cycle). A
 `states.idle` entry is still honored when it arrives from the composition entry
-or a hand-written `settings.yaml` — backward compatibility only; it is simply
-not editable from the card.
+or the settings document's user layer — backward compatibility only; it is
+simply not editable from the page.
 
 Entries are shallow-merged over the defaults, so you can override only a few states. Example:
 
@@ -183,8 +184,8 @@ immediately distinguishable — no need to touch the per-state palette:
   color you configured; the other states keep their signal colors. Unset (the
   default) means "the idle state's own color", i.e. today's behavior.
 - It is a **per-DSH-instance** setting, not per browser tab: every tab of one
-  instance shares it, while another instance (its own profile /
-  `settings.yaml`, e.g. `dsh web --port 3081`) can use a different color.
+  instance shares it, while another instance (its own profile, e.g.
+  `dsh web --port 3081`) can use a different color.
 - **Reset** removes your overrides back to the composition entry. When the
   color comes from that entry (the `base` layer, which an `unset` cannot
   reach), the card writes the idle state's own color instead — so "Reset to
@@ -203,14 +204,21 @@ immediately distinguishable — no need to touch the per-state palette:
   with each other — only the default color against them. A malformed value is
   ignored (and reported) rather than painted.
 
-### Settings page & `settings.yaml` (DSH ≥ 0.1.2)
+### Settings page (DSH ≥ 0.1.2-rc.1, both settings generations)
 
-The plugin registers the whole config surface above with the DSH settings
-service under the `web-icon-indicator` namespace (a schemastery schema in
-`lib/index.js`):
+The plugin exports the whole config surface above as its Cordis `Config`
+schema (a schemastery schema in `lib/index.js`) **and** registers the same
+schema through the legacy settings service when the running host still exposes
+it — the two paths are feature-detected at mount, so one bundle serves both.
+The namespace differs by generation: **≥ 0.1.7** keys every live form by
+**profile entry id**, so it is `dsh-web-icon-indicator` (the row id the bundle
+patch declares); **≤ 0.1.6-alpha.1** uses the plugin-chosen
+`web-icon-indicator`, the same string 0.5.x used, so an existing section keeps
+resolving:
 
-- **Web GUI:** open **设置 → 插件 → 插件配置** — a *Favicon indicator* card
-  edits the same keys: asking/done hold, the **default icon color** (with a
+- **Web GUI:** open **设置 → 插件**, expand the **dsh-web-icon-indicator**
+  bundle and configure its row. The *Favicon indicator* page edits the same
+  keys: asking/done hold, the **default icon color** (with a
   live palette preview and the similarity warning), and the per-state effect /
   colors / cycle for `running` / `asking` / `done`. Each of those states is a
   collapsible row whose header shows one **color chip** per state — split in two
@@ -230,34 +238,42 @@ service under the `web-icon-indicator` namespace (a schemastery schema in
   `colors[0]`). `idle` deliberately gets **no row** — it paints one
   color and never animates, so the default-color field is its whole
   configuration. Everything is staged and saved through the settings transport.
-- **Persistence:** values land in the profile's `settings.yaml` (default
-  `~/.dsh/settings.yaml`) as a `web-icon-indicator:` section. The composition
-  entry stays the `base` layer; resolution order is schema defaults →
-  composition entry → settings document user layer.
-- **No server restart, no tab reload** for settings-card saves: `askingHoldMs` /
-  `doneHoldMs` apply live host-side, and per-state visual config (effect /
-  colors / cycle) is synced into the running tab through the status poll within
-  ~1 s. Only code-level default changes in `lib/index.js` need a tab reload (or
-  a DSH web rebuild).
-- **Route paths are not settings.** `statusPath` / `iconPathPrefix` are
-  registration-time keys baked into the route table and the injected script, so
-  they live in the composition entry only (see the table above) and a restart is
-  required to change them. They are deliberately absent from the settings schema
-  and from `settings.yaml`: honoring them there would point the browser at a path
-  the server never serves.
-- The settings surface therefore covers `askingHoldMs`, `doneHoldMs`,
-  `iconsDir` and `states`. `iconsDir` has no schema default, so it is omitted
-  from the settings document unless a user sets it.
+- **Persistence:** on ≥ 0.1.7 values land in the profile patch
+  (`~/.dsh/profiles/<profile>/cordis.patch.yml`) under the
+  `dsh-web-icon-indicator` row's `config:` block; on ≤ 0.1.6-alpha.1 they land
+  in `~/.dsh/settings.yaml` as a `web-icon-indicator:` section. In both cases
+  the composition entry stays the `base` layer; resolution order is schema
+  defaults → composition entry → user layer.
+- **No server restart, no tab reload** for settings-page saves. On ≥ 0.1.7 a
+  live write is committed into the running plugin's config references
+  (`loader/volatile-update` — the loader does not restart the plugin); on the
+  legacy line the service calls the registered `onChange` hook. Either way
+  `askingHoldMs` / `doneHoldMs` apply host-side immediately and per-state visual
+  config (effect / colors / cycle) is synced into the running tab through the
+  status poll within ~1 s. Only code-level default changes in `lib/index.js`
+  need a tab reload (or a DSH web rebuild).
+- **Route paths are not live settings.** `statusPath` / `iconPathPrefix` are
+  validated by `Config` but deliberately **not** `.volatile()`, so they are
+  absent from the live form: they are baked into the route table and the
+  injected script at registration time, and honoring an edit there would point
+  the browser at a path the server never serves. They are composition-entry
+  only (see the table above); changing them re-applies the plugin.
+- The live surface therefore covers `askingHoldMs`, `doneHoldMs`, `iconsDir`,
+  `defaultColor` and `states`. `iconsDir` has no schema default, so it is
+  omitted from the resolved form until a user sets it.
 - The browser half is a hand-written `lib/client.js` (ModuleLoader factory
-  format — no build step, no runtime deps beyond the shell's `react`). The DSH
-  client scanner picks a new `dsh.client` declaration up on the next profile
-  start.
-- Deployments without a settings service are unaffected: the plugin falls back
-  to reading the composition entry exactly as before.
+  format — no build step, no runtime deps beyond the shell's `react`). It
+  registers on both page slots (`plugins.row.config` — gated on the served
+  namespace — and the legacy `settings.plugin.item`) and resolves whichever
+  settings provider the host exposes (`configForms` or `settingsScope`) at
+  render time, so neither is a hard dependency of the module. The DSH client
+  scanner picks a new `dsh.client` declaration up on the next profile start.
+- Deployments without a settings service are unaffected: the plugin keeps
+  running on the composition entry + schema defaults it was mounted with.
 
 ## How it works
 
-- Host plugin with a small browser half: registers routes on the existing `webServer` — the status JSON endpoint, a static `/dsh-web-icon-indicator/base.svg` (the whale template), and one `tapIndex` that injects a small browser script into every served `index.html`. The config surface is registered with the DSH settings service (`web-icon-indicator` namespace) for validation, persistence, and the settings-page card (see above).
+- Host plugin with a small browser half: registers routes on the existing `webServer` — the status JSON endpoint, a static `/dsh-web-icon-indicator/base.svg` (the whale template), and one `tapIndex` that injects a small browser script into every served `index.html`. The config surface is the plugin's exported `Config` schema, which the DSH settings service projects into a live page keyed by the `dsh-web-icon-indicator` entry id (see above).
 - Status is aggregated across live `agents.list()` with priority `asking > running > done > idle`. The aggregation runs a `reconcile()` step on every request to detect running → idle transitions, because `agent/status`'s idle delivery is not guaranteed at turn end. The status endpoint also reports `active` — the number of non-idle agents — and while that count is **> 1** the injected script renders a full-frame count block (the *满幅数字* channel of [`demo/badge.html`](./demo/badge.html): a rounded block filled with the same per-frame state color/effect as the whale, bold white count sized 31%–52% of the icon, capped at `99+`) instead of the whale, so the tab shows how many agents are busy at once even in a pinned 16px tab.
 - `ask_user_question` tool calls (via `tools/pre-execute` / `tools/result`) flip the session into `asking` with a configurable minimum-hold so the icon stays visible even when the user answers immediately.
 - Permission / **sandbox-interception** waits are also surfaced as `asking`: when the agent hits a sandbox denial and escalates (`sandbox_permissions` + `justification`), or any other tool asks for approval, the approval service appends an `approval/asked` session event and blocks the agent until you decide. The plugin watches `session/event` (with an authoritative fold over the live session log as a fallback) and pins the session into the `asking` state for that whole wait, clearing it on `approval/decided`.

@@ -7,7 +7,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/dsh-web-icon-indicator)](https://www.npmjs.com/package/dsh-web-icon-indicator)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-> **⚠️ DSH 版本支持** —— 需要 **DSH ≥ 0.1.2**（设置卡片所用的 settings 服务 API）。已针对当前最高测试版本 **DSH 0.1.2-rc.1** 构建并验证。在 **DSH < 0.1.2** 上 favicon 仍可用，但设置页（**设置 → 插件 → 插件配置**）不可用。
+> **⚠️ DSH 版本支持** —— 需要 **DSH ≥ 0.1.2-rc.1**。同一份插件同时兼容两代 settings 契约：**新一代**（≥ 0.1.7-alpha.1：导出 `Config` schema + `configForms` + `plugins.row.config`）与**旧一代**（≤ 0.1.6-alpha.1：`settings.installSection` + `settingsScope` + `settings.plugin.item`）。已在 **DSH 0.1.5-rc.3** 与 **DSH 0.1.7-alpha.1** 上验证；更早的宿主上 favicon 仍可用，只是配置页可能不可达。
 
 浏览器标签页 favicon 实时反映 DSH 会话状态——`待机` / `运行中` / `提问` / `完成`——让你在标签页置于后台时也能一眼看出是否有会话需要处理。
 
@@ -19,7 +19,7 @@
 - **单个 SVG，浏览器内上色与动画** —— 只内置一个鲸鱼模板（[`icons/base.svg`](./icons/base.svg)）；每个状态、颜色、每一帧都在客户端渲染为 `data:image/svg+xml` URI，不再有按颜色拆分的图标文件。
 - **六种内置特效** —— `static`（静止）、`blink`（闪烁）、`breath`（呼吸）、`rainbow`（彩虹）、`heartbeat`（心跳）、`bounce`（跳动），全部由 JavaScript 驱动（favicon 不会播放 SVG CSS 动画）。
 - **完全可配置、即时生效** —— 每个状态的颜色、特效、周期，以及提问 / 完成驻留时长，改动约 1 秒内同步到已打开的标签页——无需刷新、无需重启。
-- **内置配置 UI，无需手写 YAML** —— DSH 设置页里的 *标签页图标指示器* 卡片可编辑整套配置，带实时色块预览，保存后自动写入 `settings.yaml`（路径见下）。
+- **内置配置 UI，无需手写 YAML** —— *标签页图标指示器* 页面可编辑整套配置，带实时色块预览并自动持久化（新宿主：profile patch；旧宿主：profile `settings.yaml`，路径见下）。
 - **后台标签页与重启抗性** —— 隐藏标签页中 `requestAnimationFrame` 被暂停时，动画态会按墙钟时间补帧；状态轮询还能扛住 host 重启、后端停止：故障期间标签页图标绝不丢失（还原启动时缓存的原始图标 `data:`-URI 副本，或保留最后一帧插件图标），端点恢复后自动回到实时状态。切回前台时会立刻触发一次状态拉取并重绘——后台标签页的定时器会被浏览器节流，轮询可能滞后，所以回到标签页的瞬间就刷新最新状态（比如 `done` 保持期在隐藏期间过期、图标应退回 `idle` 的情况）。
 - **多 agent 一目了然** —— 当同时有**超过一个**活动 agent（非待机：`asking` / `running` / `done`）时，favicon 从鲸鱼切换为**占满整帧的数字块**，实时显示活动数（上限 `99+`），颜色与动画和该状态下鲸鱼完全一致；活动数回到 0–1 时恢复鲸鱼。（视觉与 [`demo/badge.html`](./demo/badge.html) 的「满幅数字」通道一致。）
 
@@ -27,12 +27,12 @@
 
 | # | 步骤 |
 | --- | --- |
-| 1 | 打开 DSH Web GUI，进入 **设置**。 |
-| 2 | 在 **插件** 选项卡中，打开 **插件配置**。 |
-| 3 | 找到 **标签页图标指示器（Favicon indicator）** 卡片。 |
+| 1 | 打开 DSH Web GUI，进入 **设置** → **插件**。 |
+| 2 | ≥ 0.1.7：展开 **dsh-web-icon-indicator** bundle，在其 `dsh-web-icon-indicator` 行上点击 **配置**；≤ 0.1.6-alpha.1：在该选项卡里打开 **插件配置**。 |
+| 3 | 打开 **标签页图标指示器（Favicon indicator）** 配置页。 |
 | 4 | 先用 **默认图标颜色** 设置待机鲸鱼的颜色（这是待机唯一的设置项——待机只画一种颜色、不做动画），再展开状态行（`running` / `asking` / `done`）编辑 **特效**、**颜色**（每个色块即原生取色器），以及**周期（毫秒）**——仅动画状态显示，静态状态无周期；用 **提问驻留** / **完成驻留** 调整两个时长。 |
 
-改动会通过 settings 传输层持久化到 profile 的 `settings.yaml`，约 1 秒内应用到已打开的标签页——无需刷新、无需重启。完整键说明见 [配置](#配置)。
+改动会通过 settings 传输层持久化到 profile patch，约 1 秒内应用到已打开的标签页——无需刷新、无需重启。完整键说明见 [配置](#配置)。
 
 ## 🎬 默认配置，可视化
 
@@ -114,7 +114,7 @@ dsh plugin --profile web add <路径或tarball>
 
 所有键均可选，默认值如下。`statusPath` 与 `iconPathPrefix` 是**注册期**键：
 只能在合成条目（composition entry）里设置——它们在插件挂载时就被烘进路由表与注入
-脚本，因此刻意**不**进入设置面（`settings.yaml`）。
+脚本，因此刻意**不**进入配置页的实时表单（它们是 `Config` 字段，但非 `.volatile()`）。
 
 | 键 | 默认值 | 含义 |
 | --- | --- | --- |
@@ -143,7 +143,7 @@ config:
 
 `idle` 比较特殊：它的颜色就是 `defaultColor` 键，设置卡片**不为它提供状态条目**
 （一种颜色、不做动画、也没有周期）。若 `states.idle` 来自合成条目或手写的
-`settings.yaml`，仍然会被沿用——这属于向后兼容，只是无法在卡片里编辑。
+设置文档的用户层，仍然会被沿用——这属于向后兼容，只是无法在配置页里编辑。
 
 每个状态条目会在默认值之上做浅合并，因此只需覆盖少量状态。示例：
 
@@ -173,7 +173,7 @@ config:
   因此 idle 仍保留自己配置的特效与第二色，其它状态的颜色语义（黄=运行、红/黄=提问、
   绿=完成）不受影响；不设置（默认）即等于「沿用 idle 自己的颜色」，行为与之前完全一致。
 - 这是**按 DSH 实例**生效的设置，不是按标签页：同一实例的所有标签页共用它；另一个实例
-  （自己的 profile / `settings.yaml`，例如 `dsh web --port 3081`）可以用另一种颜色。
+  （自己的 profile，例如 `dsh web --port 3081`）可以用另一种颜色。
 - **恢复默认**会把你的覆盖清回合成条目。当颜色本来就来自合成条目（`base` 层，
   用户层的 `unset` 触及不到）时，卡片改为写入 idle 自己的颜色——这样「恢复默认」真的
   能让图标回到朴素的鲸鱼色，而合成条目里配置的值仍可通过「清除覆盖」一键取回。
@@ -186,13 +186,18 @@ config:
   共用 `#FACC15`，所以**状态之间互不比较**，只把默认色与它们逐一比较。格式非法的值会被
   忽略并上报，而不会被画到图标上。
 
-### 设置页与 `settings.yaml`（DSH ≥ 0.1.2）
+### 设置页（DSH ≥ 0.1.2-rc.1，兼容两代 settings 契约）
 
-插件把上面整套配置注册进 DSH settings 服务，命名空间为 `web-icon-indicator`
-（schema 为 `lib/index.js` 中的 schemastery schema）：
+插件把上面整套配置作为 Cordis `Config` schema 导出（`lib/index.js` 中的
+schemastery schema），**并在宿主仍提供旧版服务时**用同一份 schema 走
+`settings.installSection` 注册——两条路径在挂载时按能力探测，因此同一份 bundle
+两代宿主都能用。命名空间随代际不同：**≥ 0.1.7** 按 **profile entry id** 组织实时
+表单，即 `dsh-web-icon-indicator`（bundle patch 声明的行 id）；**≤ 0.1.6-alpha.1**
+使用插件自定的 `web-icon-indicator`，与 0.5.x 保持一致，老用户的 section 继续生效：
 
-- **Web GUI：** 打开 **设置 → 插件 → 插件配置**，会出现 *标签页图标指示器*
-  卡片，可编辑：提问/完成驻留、**默认图标颜色**（带配色一览与相似度告警），以及
+- **Web GUI：** 打开 **设置 → 插件**，展开 **dsh-web-icon-indicator** bundle 并
+  配置它的行，即出现 *标签页图标指示器* 页面，可编辑：提问/完成驻留、
+  **默认图标颜色**（带配色一览与相似度告警），以及
   `running` / `asking` / `done` 三个状态各自的特效 / 颜色 / 周期。这三个状态
   各占一行可折叠条目，行首是一个**色块**——多色状态（asking）会左右分格同时显示
   红黄两色，旁边是一行「特效 · 周期」摘要（如 `Blink · 400ms`）。点击色块即打开
@@ -206,27 +211,34 @@ config:
   色块（也就是存下的 `colors[0]`）。`idle` 刻意**不占
   一行**——它只画一种颜色、不做动画，默认图标颜色就是它的全部配置。所有修改都通过
   settings 传输层暂存并保存。
-- **持久化：** 值写入 profile 的 `settings.yaml`（默认 `~/.dsh/settings.yaml`）
-  的 `web-icon-indicator:` 段。合成条目仍是 `base` 层；解析顺序为 schema 默认值
-  → 合成条目 → 设置文档用户层。
-- **无需重启服务器、无需刷新标签页**即可让设置卡片的修改生效：`askingHoldMs` /
-  `doneHoldMs` 在主机侧即时生效；各状态的视觉配置（特效 / 颜色 / 周期）会随状态
-  轮询同步进正在运行的标签页，约 1 秒内生效。只有改 `lib/index.js` 里的代码级
-  默认值才需要重载标签页（或重新构建 DSH Web）。
-- **路由路径不是设置项。** `statusPath` / `iconPathPrefix` 是注册期键，已被烘进
-  路由表与注入脚本，因此只存在于合成条目（见上方表格），改动需要重启。它们刻意
-  不在设置 schema 与 `settings.yaml` 中：若在那里生效，浏览器会去请求服务器根本
-  没有提供的路径。
-- 因此设置面覆盖 `askingHoldMs`、`doneHoldMs`、`iconsDir` 与 `states`。
-  `iconsDir` 没有 schema 默认值，用户未设置时不会出现在设置文档中。
+- **持久化：** ≥ 0.1.7 写入 profile patch
+  （`~/.dsh/profiles/<profile>/cordis.patch.yml`）中 `dsh-web-icon-indicator`
+  行的 `config:` 段；≤ 0.1.6-alpha.1 写入 `~/.dsh/settings.yaml` 的
+  `web-icon-indicator:` 段。两者都保持合成条目为 `base` 层；解析顺序为
+  schema 默认值 → 合成条目 → 用户层。
+- **无需重启服务器、无需刷新标签页**即可让配置页的修改生效：≥ 0.1.7 时实时写入
+  直接提交到运行中插件的配置引用（`loader/volatile-update`——loader 不会重启插件）；
+  旧一代则由 settings 服务回调注册的 `onChange`。两种情况 `askingHoldMs` /
+  `doneHoldMs` 都在主机侧即时生效；各状态的视觉配置（特效 / 颜色 / 周期）会随状态
+  轮询同步进正在运行的标签页，约 1 秒内生效。只有改 `lib/index.js` 里的代码级默认值
+  才需要重载标签页（或重新构建 DSH Web）。
+- **路由路径不是实时设置项。** `statusPath` / `iconPathPrefix` 由 `Config` 校验，但
+  刻意**不加** `.volatile()`，因此不出现在实时表单里：它们已被烘进路由表与注入脚本，
+  在那里生效只会让浏览器去请求服务器根本没有提供的路径。它们只存在于合成条目
+  （见上方表格），改动会重新挂载插件。
+- 因此实时设置面覆盖 `askingHoldMs`、`doneHoldMs`、`iconsDir`、`defaultColor`
+  与 `states`。`iconsDir` 没有 schema 默认值，用户未设置时不会出现在解析后的表单中。
 - 浏览器半区是手写的 `lib/client.js`（ModuleLoader factory 格式——无构建步骤、
-  无额外运行期依赖，仅用 shell 自带的 `react`）。DSH 客户端扫描器会在下次启动
-  profile 时识别新的 `dsh.client` 声明。
-- 未组合 settings 服务的部署不受影响：插件回退到直接读取合成条目，行为与之前完全一致。
+  无额外运行期依赖，仅用 shell 自带的 `react`）。它同时往两代页面插槽注册
+  （`plugins.row.config`——按「Host 是否提供该命名空间」门控；以及旧的
+  `settings.plugin.item`），并在渲染时按宿主实际提供的服务解析表单
+  （`configForms` 或 `settingsScope`），因此两者都不是模块的硬依赖。DSH 客户端
+  扫描器会在下次启动 profile 时识别新的 `dsh.client` 声明。
+- 未组合 settings 服务的部署不受影响：插件继续使用挂载时的合成条目 + schema 默认值。
 
 ## 实现原理
 
-- Host 插件 + 一个小型浏览器半区：在现有 `webServer` 上注册路由——状态 JSON 端点、静态 `/dsh-web-icon-indicator/base.svg`（鲸鱼模板），以及一个 `tapIndex` 向每个 `index.html` 注入小段浏览器脚本。整套配置已注册进 DSH settings 服务（`web-icon-indicator` 命名空间）用于校验、持久化与设置页卡片（见上）。
+- Host 插件 + 一个小型浏览器半区：在现有 `webServer` 上注册路由——状态 JSON 端点、静态 `/dsh-web-icon-indicator/base.svg`（鲸鱼模板），以及一个 `tapIndex` 向每个 `index.html` 注入小段浏览器脚本。整套配置就是插件导出的 `Config` schema，DSH settings 服务按 `dsh-web-icon-indicator` entry id 把它投射为实时配置页（见上）。
 - 状态按 `agents.list()` 聚合，优先级 `asking > running > done > idle`。每次请求都会执行一次 `reconcile()` 检测 running → idle 的转换，因为 `agent/status` 的 idle 事件在回合结束时并不保证送达。状态端点还会上报 `active`——非待机 agent 数——当该数 **> 1** 时，注入脚本改为渲染占满整帧的数字块（[`demo/badge.html`](./demo/badge.html) 的「满幅数字」通道：圆角色块，填充色与鲸鱼同源的逐帧状态色/特效，白色粗体数字约占图标高度 31%–52%，上限 `99+`），而不是鲸鱼，这样即使在 16px 的固定标签页里也能一眼看出同时有几个 agent 在忙。
 - `ask_user_question` 工具调用（通过 `tools/pre-execute` / `tools/result`）把会话置为 `asking`，带可配置的最小保持时长，即使你立刻回答，图标也会保持可见。
 - 权限 / **沙箱拦截**等待同样会显示为 `asking`：当 agent 命中沙箱拒绝并请求提权（`sandbox_permissions` + `justification`），或其他工具需要征得同意时，审批服务会先写入一条 `approval/asked` 会话事件并阻塞 agent，直到你做出决定。插件监听 `session/event`（并以实时会话日志的权威折叠作为兜底）在整个等待期间将会话置为 `asking` 状态，收到 `approval/decided` 后清除。
