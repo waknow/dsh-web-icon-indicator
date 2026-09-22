@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1](https://github.com/waknow/dsh-web-icon-indicator/compare/v0.5.0...v0.5.1) (2026-09-22)
+
+### Fixed
+
+* load on DSH 0.1.7 and keep the legacy settings contract ([6e8dbb5](https://github.com/waknow/dsh-web-icon-indicator/commit/6e8dbb5402b9847eecc33029d68316407f767288))
+
 ## [0.5.0](https://github.com/waknow/dsh-web-icon-indicator/compare/v0.4.2...v0.5.0) (2026-09-17)
 
 ### Added
