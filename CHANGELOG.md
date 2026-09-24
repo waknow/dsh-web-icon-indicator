@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2](https://github.com/waknow/dsh-web-icon-indicator/compare/v0.5.1...v0.5.2) (2026-09-24)
+
+### Added
+
+* give the official Plugins page its own artwork ([332896b](https://github.com/waknow/dsh-web-icon-indicator/commit/332896b4b05af94877e63a33ad9c4895b94ad7dd))
+
+### Fixed
+
+* repaint the favicon on DSH 0.1.7's theme-scoped link pair ([a57f78f](https://github.com/waknow/dsh-web-icon-indicator/commit/a57f78ff98acd4d9ae41c03c3b0519113e357bb2))
+
 ## [0.5.1](https://github.com/waknow/dsh-web-icon-indicator/compare/v0.5.0...v0.5.1) (2026-09-22)
 
 ### Fixed
