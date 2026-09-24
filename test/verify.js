@@ -416,6 +416,15 @@ const { default: plugin } = await import(new URL("../lib/index.js", import.meta.
   emit(h.onHandlers, "tools/result", { name: "ask_user_question", agent: { id: "A" } }, {});
   const askTimer = h.timers[h.timers.length - 1];
   ok("H10b ask hold timer scheduled", !!askTimer);
+  // The hold's whole point: a user who answers INSTANTLY must still see the
+  // asking icon. So the timer has to be armed for the resolved askingHoldMs and
+  // the pin has to survive every aggregate read until that timer fires — a live
+  // run cannot prove this (the answer's real latency dwarfs the hold).
+  eq("H10b2 hold waits the resolved askingHoldMs", askTimer.ms, 3500);
+  agg = aggregate();
+  eq("H10b3 still asking while the hold runs, though the answer already returned",
+    { state: agg.state, active: agg.active }, { state: "asking", active: 1 });
+  ok("H10b4 hold still pending (not fired, not disposed)", askTimer.fired === false);
   askTimer.cb(); // hold expired, answer already returned
   agg = aggregate();
   eq("H10c ask hold expired -> live running active 1",
