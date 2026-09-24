@@ -888,29 +888,70 @@ const { default: plugin } = await import(new URL("../lib/index.js", import.meta.
 // ============================================================================
 // PART 2 — browser injected script (real template, VM + DOM/fetch/rAF stubs)
 // ============================================================================
-function makeFakeLink(initialHref) {
-  const attrs = { rel: "icon", type: "", href: initialHref || "" };
+function makeFakeLink(initialHref, attrs) {
+  const a = { rel: "icon", type: "", href: initialHref || "", ...(attrs || {}) };
   return {
     isConnected: true,
-    __attrs: attrs,
+    __attrs: a,
     setAttribute(k, v) {
-      attrs[k] = String(v);
+      if (v === null || v === undefined) delete a[k];
+      else a[k] = String(v);
     },
     getAttribute(k) {
-      return k in attrs ? attrs[k] : null;
+      return k in a ? a[k] : null;
     },
+    // The real shell's favicon pair is scoped by a `media` condition, so the
+    // stub records its own media state and `remove()` detaches it — the two
+    // facts the fix's normalization has to act on.
+    hasMediaCondition(media) {
+      return a.media === media;
+    },
+    remove() {
+      this.isConnected = false;
+    },
+    // A real replaceChild swaps NODES: the fresh link takes this one's place and
+    // does NOT inherit its attributes. Modelling that faithfully matters — the
+    // script relies on it to shed the shell's stale `media` condition, and the
+    // old "copy the fresh attrs onto the same object" shortcut hid exactly that.
     parentNode: {
+      __current: null,
       replaceChild(fresh) {
-        // adopt the fresh node's attrs into this link
-        for (const k of Object.keys(fresh.__attrs)) attrs[k] = fresh.__attrs[k];
+        fresh.__parent = this;
+        this.__current = fresh;
       },
     },
   };
 }
 
 class BrowserDriver {
-  constructor({ initialHref = "http://orig.example/favicon.ico", states = DEFAULT_STATES, withFileReader = false } = {}) {
-    this.link = makeFakeLink(initialHref);
+  constructor({ initialHref = "http://orig.example/favicon.ico", states = DEFAULT_STATES, withFileReader = false, links, matchMedia } = {}) {
+    this.links = links || [makeFakeLink(initialHref)];
+    this.matchMedia = matchMedia || (() => true); // a plain page: nothing is media-scoped
+    this.removed = []; // nodes detached by the script, in order
+    // Model a node swap faithfully (a real replaceChild does NOT copy the old
+    // node's attributes) and keep `links` in sync with the live DOM. The script
+    // replaces the <link> on every state change to defeat favicon caching, so
+    // this has to be installed on EVERY node — including the ones createElement
+    // makes later — or later swaps would silently leave `links` pointing at a
+    // detached node. (Getting this wrong hid the fix under test: the assertion
+    // kept reading the stale whale link.)
+    const patchSwap = (node) => {
+      node.parentNode.__current = node;
+      node.parentNode.replaceChild = (fresh) => {
+        const p = node.parentNode;
+        fresh.__parent = p;
+        p.__current = fresh;
+        const at = ctrl.links.indexOf(node);
+        if (at === -1) ctrl.links.push(fresh);
+        else ctrl.links[at] = fresh;
+        node.isConnected = false;
+        ctrl.removed.push(node);
+        patchSwap(fresh); // the replacement can be swapped again
+      };
+      return node;
+    };
+    for (const l of this.links) patchSwap(l);
+    const origCreate = (attrs) => patchSwap(makeFakeLink("", attrs));
     this.rafQueue = [];
     this.pollFn = null;
     this.queue = [];
@@ -926,10 +967,17 @@ class BrowserDriver {
       },
       document: {
         visibilityState: "visible",
-        querySelector: (sel) => (sel.includes("icon") ? ctrl.link : null),
-        createElement: () => makeFakeLink(""),
+        querySelector: (sel) => {
+          const all = ctrl.querySelectorAll(sel);
+          return all.length ? all[0] : null;
+        },
+        // [rel~='icon'] matches the real selector; 'icon' as a bare word keeps
+        // the historic `sel.includes("icon")` stub behavior for other callers.
+        querySelectorAll: (sel) => ctrl.querySelectorAll(sel),
+        createElement: () => origCreate(),
         head: { appendChild() {} },
       },
+      matchMedia: (q) => ({ matches: !!ctrl.matchMedia(q), media: q }),
       location: { origin: "http://localhost:3080" },
       setInterval: (fn) => {
         ctrl.pollFn = fn;
@@ -979,10 +1027,32 @@ class BrowserDriver {
     this.context = context;
     vm.runInContext(buildScript(states), context);
   }
+  // The `[rel~='icon']` selector the script uses, resolved against the stub
+  // DOM: detached nodes are gone, so a normalized/removed link stops matching.
+  querySelectorAll(sel) {
+    if (!sel.includes("icon")) return [];
+    return this.links.filter((l) => l.isConnected);
+  }
+  /** The link the browser would actually honour: the LAST connected one
+   * (the last connected is what a browser resolves an unscoped rel=icon to). */
+  get effectiveLink() {
+    const connected = this.links.filter((l) => l.isConnected);
+    // Honour `media` when the stub has one, so "run" and "assert" agree.
+    const live = connected.filter((l) => l.__attrs.media === undefined || this.matchMedia(l.__attrs.media));
+    const pick = live.length ? live : connected;
+    return pick.length ? pick[pick.length - 1] : null;
+  }
+  /** The current favicon node. *Not* a stored property: the script replaces the
+   * node (to defeat favicon caching), which would leave a stored reference
+   * pointing at a detached element. */
+  get link() {
+    return this.effectiveLink;
+  }
   get href() {
     // Favicon frames are encodeURIComponent'd data URIs; decode so assertions
     // can match literal SVG substrings (rx="11", >3<, #E5484D, ...).
-    return decodeURIComponent(this.link.__attrs.href || "");
+    const l = this.effectiveLink || this.link;
+    return decodeURIComponent(l.__attrs.href || "");
   }
   svgRes(text) {
     return { ok: true, status: 200, text: async () => text, json: async () => ({}) };
@@ -1242,6 +1312,60 @@ console.log("\n=== Part 2: browser injected script ===");
   // poll a different state while visible and confirm the listener path stays safe.
   await v.poll({ state: "running", active: 1, states: DEFAULT_STATES });
   ok("B18d subsequent polls unaffected after visible-return poll", v.href.includes("FACC15"));
+
+  // B19 the DSH >= 0.1.7 shell ships a THEME-SCOPED PAIR of favicon links:
+  //   <link rel=icon href=favicon-dark.svg media="(prefers-color-scheme: dark)">
+  //   <link rel=icon href=favicon.svg      media="(prefers-color-scheme: light)">
+  // The browser honours the LAST connected link whose media matches, so
+  // repainting only the first one left the tab on the shell's icon forever
+  // while the status endpoint changed underneath — the "icon never changes"
+  // report. The script must collapse the pair onto one always-matching link.
+  const shellPair = () => [
+    makeFakeLink("http://localhost:3080/favicon-dark.svg", { media: "(prefers-color-scheme: dark)" }),
+    makeFakeLink("http://localhost:3080/favicon.svg", { media: "(prefers-color-scheme: light)" }),
+  ];
+  const light = new BrowserDriver({
+    links: shellPair(),
+    matchMedia: (q) => q === "(prefers-color-scheme: light)",
+  });
+  await light.ready({ state: "running", active: 1, states: DEFAULT_STATES });
+  await light.poll({ state: "running", active: 1, states: DEFAULT_STATES });
+  ok("B19a a media-scoped pair collapses to ONE icon link at startup",
+    light.links.filter((l) => l.isConnected).length === 1,
+    "connected=" + light.links.filter((l) => l.isConnected).length);
+  ok("B19b that link carries no media condition left to mis-match",
+    light.effectiveLink.getAttribute("media") === null,
+    JSON.stringify(light.effectiveLink.getAttribute("media")));
+  ok("B19c the browser-effective href is the painted frame, not the shell icon",
+    light.href.indexOf("data:image/svg+xml") === 0 && light.href.includes("FACC15"),
+    light.href.slice(0, 90));
+  // Dark scheme: the shell's dark variant is the one kept as the resting href.
+  const dark = new BrowserDriver({
+    links: shellPair(),
+    matchMedia: (q) => q === "(prefers-color-scheme: dark)",
+  });
+  await dark.ready({ state: "idle", active: 0, states: DEFAULT_STATES });
+  ok("B19d dark scheme keeps the dark variant (its own scheme wins)",
+    dark.effectiveLink.__attrs.href.indexOf("favicon-dark.svg") !== -1 ||
+    dark.effectiveLink.__attrs.href.indexOf("data:image/svg+xml") === 0,
+    dark.effectiveLink.__attrs.href.slice(0, 90));
+  const beforeRepaint = dark.links.length;
+  await dark.poll({ state: "running", active: 1, states: DEFAULT_STATES });
+  ok("B19e the count-block/whale frame repaints the single kept link",
+    dark.href.includes("FACC15"), dark.href.slice(0, 90));
+  // A same-key re-poll mutates the live link in place and a key change swaps the
+  // node (how the plugin defeats favicon caching). Either way the invariants
+  // are: exactly one link stays connected, its href is a painted data: URI, and
+  // the retired shell link never comes back.
+  await dark.poll({ state: "done", active: 1, states: DEFAULT_STATES });
+  ok("B19f repainting keeps exactly one connected link, still the painted one",
+    dark.links.filter((l) => l.isConnected).length === 1 &&
+    dark.links.length === 2 &&                       // the retired shell link never returns
+    dark.links.filter((l) => !l.isConnected).length === 1 &&
+    dark.href.indexOf("data:image/svg+xml") === 0,
+    "before=" + beforeRepaint + " now=" + dark.links.length + " connected=" +
+    dark.links.map((l) => (l.isConnected ? "+" : "-")).join("") +
+    " href=" + dark.href.slice(0, 60));
 }
 
 // ============================================================================

@@ -306,6 +306,7 @@ favicon 本质是一张图片，浏览器不会在标签页 UI 里运行 SVG 自
 已知限制（截至 Safari 26.3）：
 
 - **favicon 有专属缓存。** Chrome 用 favicon 数据库、Firefox 用 `favicons.sqlite`、**Safari 用系统级图标缓存**——清普通缓存都清不掉，WebKit 甚至会把「无图标」这一状态也缓存起来。这就是改了图标后，已打开的标签页还可能显示旧图标的原因。本插件已通过「给 `base.svg` 与状态端点设置 `Cache-Control: no-store`、请求携带 freshness 参数（`?t=Date.now()`）、每次切换状态时重建 `<link rel=icon>` 节点」来缓解。
+- **必须先折叠「按主题配对」的两个 favicon link（DSH ≥ 0.1.7）。** 宿主的 `index.html` 里有**两个** `rel=icon`——`favicon-dark.svg` 对应 `prefers-color-scheme: dark`、`favicon.svg` 对应浅色（0.1.6-alpha.2 及更早只有一个）。浏览器取的是**最后一个 media 命中的已连接 link**，所以只重绘第一个的话，无论会话状态怎么变，标签页始终显示宿主自己的图标。插件现在会在首次绘制前把这一组规范成**唯一一个不带 media 的 link**（保留你当前配色方案对应的那个）。如果你用的是 0.5.2 之前的版本、且标签页图标完全不变化，原因就在这里。
 - **Safari 渲染 SVG favicon，但忽略其内部 CSS**——不支持 `@media`、`prefers-color-scheme`、CSS 动画。所以所有上色必须烘焙进每一帧的标记（本插件正是这么做的），而不能依赖 CSS 变量。
 - **`data:` URI 的 SVG favicon 在 Safari 不可靠**（WebKit bug 236616，仍未关闭；Safari 17.6 复现）。本插件当前每帧都生成 `data:image/svg+xml` URI，因此在 Safari 上标签页图标可能完全不显示——这是最大的已知缺口。
 - **Safari 的动态 JS 更新为 hit-or-miss**，可能需要刷新一次；Safari 会「锁定」它首次看到的图标。目前没有保证可靠的、符合规范的手段能在 Safari 中实时更换 favicon。
