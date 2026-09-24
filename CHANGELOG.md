@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0](https://github.com/waknow/dsh-web-icon-indicator/compare/v0.5.2...v0.6.0) (2026-09-24)
+
+### Added
+
+* show the settings form on the plugin's own page ([a85a8b0](https://github.com/waknow/dsh-web-icon-indicator/commit/a85a8b0ce3821743c45bd8cca6ea0d969e8a419f))
+
 ## [0.5.2](https://github.com/waknow/dsh-web-icon-indicator/compare/v0.5.1...v0.5.2) (2026-09-24)
 
 ### Added
