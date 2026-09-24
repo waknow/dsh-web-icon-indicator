@@ -21,7 +21,7 @@ The DSH platform this plugin runs on lives at **https://github.com/deepseek-ai/d
 | Path | Role | Notes |
 | --- | --- | --- |
 | `lib/index.js` | **The entire host implementation**: Cordis plugin + per-agent state machine + HTTP routes + injected browser script + the schemastery `Config` schema (modern lines project it into a live form) and the feature-detected legacy `installSection` registration | The file you will normally edit for host behavior |
-| `lib/client.js` | **Browser half** (hand-written `window.__ModuleLoader__.load` bundle, no build step): registers the configuration page on both generations' slots (`plugins.row.config` / `settings.plugin.item`) and binds whichever settings provider the host exposes (`configForms` / `settingsScope`) | Edit when changing the settings-page card (fields, labels, save/reset) |
+| `lib/client.js` | **Browser half** (hand-written `window.__ModuleLoader__.load` bundle, no build step): registers the configuration page on the slot a host declares — `plugins.bundle.config` on every host with a Plugins page (≥ 0.1.6-alpha.2), else `plugins.row.config`, plus `settings.plugin.item` on the legacy line — and binds whichever settings provider the host exposes (`configForms` / `settingsScope`) | Edit when changing the settings-page card (fields, labels, save/reset) |
 | `lib/types/index.d.ts` | Public config & aggregate types | Keep in sync with the config surface + `CONFIG_SCHEMA` in `lib/index.js` |
 | `lib/types/client/index.d.ts` | Browser-half types (`inject` / `apply`) | Keep in sync with `lib/client.js` |
 | `icons/base.svg` | The single whale template with a `__COLOR__` placeholder; recolored/animated in the browser | The filename is locked by a route regex — treat as immutable |
@@ -57,8 +57,32 @@ the published line, so any settings-page change must keep all three working
 | Host | Host half | Client form provider | Page slot | Namespace |
 | --- | --- | --- | --- | --- |
 | ≤ 0.1.6-alpha.1 | `settings.installSection` | `settingsScope` | `settings.plugin.item` | `web-icon-indicator` |
-| 0.1.6-alpha.2 | `settings.installSection` | `settingsScope` | `plugins.row.config` | `web-icon-indicator` |
-| ≥ 0.1.7 | exported `Config` + `loader/volatile-update` | `configForms` | `plugins.row.config` | `dsh-web-icon-indicator` |
+| 0.1.6-alpha.2 | `settings.installSection` | `settingsScope` | `plugins.bundle.config` | `web-icon-indicator` |
+| ≥ 0.1.7 | exported `Config` + `loader/volatile-update` | `configForms` | `plugins.bundle.config` (row slot only as fallback) | `dsh-web-icon-indicator` |
+
+**Why the bundle slot, not the row slot, on the modern lines.** The Plugins page declares
+BOTH: `plugins.bundle.config`, which its bundle page renders under the
+description, and `plugins.row.config`, whose configure control sits on a row
+*inside* that page — one click deeper. The bundle page is exactly what a card in
+the Plugins list opens, so `plugins.bundle.config` is what puts the settings one
+click from that list; it is also the shape the official plugins use (the official
+voice-input bundle registers `plugins.bundle.config` keyed by its own package
+name). `start()` therefore registers the bundle entry wherever the host declares
+it and drops the row one — cancelling the row wait, or disposing a row
+registration that landed first — so one page never draws the same form twice.
+
+**Checked against the published hosts** (npm registry, 2026-09): the page package
+`@deepseek-ai/dsh-client-ui-plugin-manager` exists only from **0.1.6-alpha.2**,
+and every version of it (0.1.6-alpha.2, 0.1.7-alpha.1/2, 0.1.7-rc.1) declares
+BOTH slots *and* renders `plugins.bundle.config` on the bundle page
+(`configured: ledger.bundles.has(pkg.name)`), so any host with a Plugins page
+takes the bundle branch. `settings.plugin.item` ships in
+`dsh-client-ui-settings-plugins` through **0.1.6-alpha.1** and is gone from
+0.1.6-alpha.2 on; `configForms` + `whileServed` appear only in
+`dsh-client-ui-settings` from **0.1.7-alpha.1**, so 0.1.6-alpha.2 still binds
+through `settingsScope` while rendering the bundle slot; `slots.inject` exists
+back to **0.1.2-rc.1**. The row branch is therefore a guard no released host
+reaches — keep it that way rather than assuming it has been exercised.
 
 Canonical reference: the official settings/Plugins-page slot contract shipped
 inside the host (`@deepseek-ai/dsh-cordis-client-runner` embeds the slot
@@ -119,15 +143,22 @@ settings-page change.
   mutation). Only the explicit reset uses `scope.unset` per key — except a
   `defaultColor` that only the composition layer provides, which the reset
   rewrites to the idle colour because an `unset` cannot reach the `base` layer.
-- **Slot registration shape** (in `apply()`): register the page on **both**
-  slots, each through `ctx.slots.inject` (a no-op for a slot the host never
-  declares). Modern: `ctx.effect(() =>
+- **Slot registration shape** (in `apply()`): every branch goes through
+  `ctx.slots.inject` (a no-op for a slot the host never declares), and exactly
+  one of the two modern branches may fire. Modern: `ctx.effect(() =>
   ctx.configForms.whileServed([NS], start))`, where `start()` registers
-  `{ name: "plugins.row.config", key: ROW_KEY }` with
-  `ROW_KEY = "<bundle package name>#<row id>"`. Legacy: `start()` also registers
+  `{ name: "plugins.bundle.config", key: BUNDLE_KEY }` with
+  `BUNDLE_KEY = "<bundle package name>"` and, **only while that slot stays
+  undeclared**, `{ name: "plugins.row.config", key: ROW_KEY }` with
+  `ROW_KEY = "<bundle package name>#<row id>"`. The bundle branch sets a
+  `bundleLive` flag and calls `dropRow()`; the row callback returns a no-op
+  when `bundleLive` is already set. Both slots arrive with the Plugins page's own
+  registration, so their declarations can land in either order after `apply()`
+  (covered by F66–F68). Legacy: `start()` also registers
   `{ name: "settings.plugin.item", key: LEGACY_NS }`, dispatched by the legacy
   settings tab per served namespace (no extra gate needed). `start` must return
-  a disposer — `whileServed` stores it and would otherwise re-register.
+  a disposer that calls `disposeBundle()`, `dropRow()` and `disposeItem()` —
+  `whileServed` stores it and would otherwise re-register.
 - **The page asks for two views**: `view: "summary"` (the row's one-liner) and
   `view: "page"` (the body, already headed by the plugin's title/description —
   the card skips its own collapsible header there). A standalone render passes
@@ -136,7 +167,8 @@ settings-page change.
   across generations — `@deepseek-ai/dsh-client-locale`,
   `-ui-renderer` (owns the `slots` service), `-ui-settings` (the
   `configForms`/`settingsScope` provider), `-ui-settings-plugins` (the legacy
-  tab) and `-ui-plugin-manager` (`plugins.row.config`). Both loaders skip a
+  tab) and `-ui-plugin-manager` (`plugins.bundle.config` /
+  `plugins.row.config`). Both loaders skip a
   declared package that is absent from the running host
   (`graphRows.get(name) !== undefined`), so the union is safe on every line —
   keep it that way rather than trimming to one generation.
@@ -152,10 +184,10 @@ settings-page change.
 3. If defaults/keys changed: update the config tables in **both** READMEs, `lib/types/index.d.ts`, and — when the card exposes the key — the field in `lib/client.js`.
 
 ### Change the settings card (fields, labels, save/reset)
-0. Stay inside the [Settings page contract](#settings-page-contract-cookbook): both namespace join keys (`dsh-web-icon-indicator` / `web-icon-indicator`), the dual slot registration (`plugins.row.config` + `settings.plugin.item`), the purity gate (no value imports of chrome/form model), and write-through-the-resolved-scope staging.
+0. Stay inside the [Settings page contract](#settings-page-contract-cookbook): both namespace join keys (`dsh-web-icon-indicator` / `web-icon-indicator`), the slot registration (`plugins.bundle.config` → `plugins.row.config` → `settings.plugin.item`, exactly one per host generation), the purity gate (no value imports of chrome/form model), and write-through-the-resolved-scope staging.
 1. Edit `lib/client.js`: the `IconConfigCard` component + the `en`/`zh` dictionaries. The card reads the scope snapshot (`status/writable/value/base/user`) and writes via `scope.mutate(ops)` (one atomic namespace mutation per save) / `scope.unset(field)` (reset).
 2. No build step: the file is served as an on-demand, content-addressed combo chunk under `/plugins/??dsh-web-icon-indicator/client.js&rev=…` (the URL the boot manifest advertises; the bare `/plugins/<id>/client.js` path no longer exists). A NEW `dsh.client` declaration (or a first-time `lib/client.js`) is only scanned at profile start; content changes to an existing bundle are re-hashed by HMR.
-3. Covered by Part 6 of `test/verify.js`: the bundle is loaded through a fake `window.__ModuleLoader__` and its factory run with hand-rolled `react` + primitives stubs, asserting both generations (modern `configForms` + `whileServed` + `plugins.row.config`; legacy `settingsScope` + `settings.plugin.item` keyed by the legacy namespace), both page views, the rendered card and the exact scope writes (no `react-dom` dependency, so no `react-dom/server`).
+3. Covered by Part 6 of `test/verify.js`: the bundle is loaded through a fake `window.__ModuleLoader__` and its factory run with hand-rolled `react` + primitives stubs, asserting every generation (modern `configForms` + `whileServed` + `plugins.bundle.config`; the row-only fallback host; either declaration order of the two modern slots, F66–F68; legacy `settingsScope` + `settings.plugin.item` keyed by the legacy namespace), both page views, the rendered card and the exact scope writes (no `react-dom` dependency, so no `react-dom/server`).
 
 ### Add a new state (e.g. `error`)
 1. Add a `states.<newstate>` default (`effect` / `colors[]` / `speed`) in `DEFAULTS` in `lib/index.js`. No new SVG is needed — every state renders from `base.svg`.
@@ -321,8 +353,9 @@ plain-Node script (`npm test` or `node test/verify.js`). It runs the REAL code:
 - **Browser half** — `lib/client.js` is loaded through a fake
   `window.__ModuleLoader__` and its factory is run with hand-rolled `react` +
   `@deepseek-ai/dsh-client-ui-primitives` stubs (no dependencies, no build step):
-  loader contract, both generations' bindings (`configForms` + `whileServed` +
-  `plugins.row.config`; `settingsScope` + `settings.plugin.item`), both page
+  loader contract, every generation's bindings (`configForms` + `whileServed` +
+  `plugins.bundle.config`; the row-only page; either declaration order of the
+  two modern slots; `settingsScope` + `settings.plugin.item`), both page
   views (`summary` / `page`), card render, staged edits and the single atomic
   `scope.mutate` write, reset.
 - **`defaultColor` coverage** — H25–H28k (fold/precedence, blank/null/invalid
@@ -365,7 +398,7 @@ Additionally verify manually:
 - Keep the live config sync lossless: the status response echoes `states` (the resolved per-state visual config) and `syncCfg` swaps it in with a `PREV_STATE = null` repaint when the serialized value changes. It must stay inside the poll's `.then()` — never in the `.catch()` path — and a payload without `states` (older host) must leave the baked `__CFG__` untouched. `statusPath` / `iconPathPrefix` route paths are baked at registration, so changing those keys still requires a restart.
 - Keep the plugin host-plane only: mount via profile composition, never as a session-scoped agent preset.
 - Keep `statusPath` / `iconPathPrefix` **out of the live settings form** (plain, not wrapped in `LIVE()`): they are baked into the route table and the injected script at registration time, so a settings-document change to them could never be honored without re-applying the plugin (the browser would poll a path the server does not serve). They are composition-entry only; the live surface covers `askingHoldMs`, `doneHoldMs`, `iconsDir`, `defaultColor`, `states`.
-- Don't break the settings-page contract (see *Settings page contract (cookbook)*): both namespace join keys, the dual slot registration, the version-gated `LIVE()` wrapper, the bundle-purity gate (never value-import `PluginCard` / `CardForm` / `fields` from `@deepseek-ai/dsh-client-ui-settings-plugins`), and staging writes through the resolved scope (`configForms` / `settingsScope`).
+- Don't break the settings-page contract (see *Settings page contract (cookbook)*): both namespace join keys, the slot registration (`plugins.bundle.config` first, `plugins.row.config` only where that slot is absent, `settings.plugin.item` on the legacy line — never two of them on one page), the version-gated `LIVE()` wrapper, the bundle-purity gate (never value-import `PluginCard` / `CardForm` / `fields` from `@deepseek-ai/dsh-client-ui-settings-plugins`), and staging writes through the resolved scope (`configForms` / `settingsScope`).
 
 ## Do NOT
 

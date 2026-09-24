@@ -1575,6 +1575,7 @@ console.log("\n=== Part 6: browser half (lib/client.js) ===");
   const makeClientCtx = (opts) => {
     const declared = new Set(opts.declared || []);
     const services = opts.services || {};
+    const sink = opts.sink || registered;
     return {
       get(name) { return services[name]; },
       locale: {
@@ -1583,13 +1584,23 @@ console.log("\n=== Part 6: browser half (lib/client.js) ===");
       },
       slots: {
         inject(name, cb) { if (declared.has(name)) cb(); return () => {}; },
-        register(slotSpec, component) { registered.push({ slotSpec, component }); return () => {}; },
+        register(slotSpec, component) {
+          const entry = { slotSpec, component, disposed: false };
+          sink.push(entry);
+          return () => { entry.disposed = true; };
+        },
       },
       effect(fn) { return fn(); },
     };
   };
+  // A DSH >= 0.1.7 host declares BOTH configuration slots when the Plugins
+  // page's own registration commits, and the card must land in exactly one of
+  // them: `plugins.bundle.config` renders on the bundle's page — the page a
+  // Plugins-list card opens, so one click from the list — while
+  // `plugins.row.config` only puts a configure control on that page's row,
+  // one level deeper. Registering into both would draw the same form twice.
   const clientCtx = makeClientCtx({
-    declared: ["plugins.row.config"],
+    declared: ["plugins.bundle.config", "plugins.row.config"],
     services: {
       configForms: {
         get(entryId) { boundEntryId = entryId; return scope; },
@@ -1602,15 +1613,18 @@ console.log("\n=== Part 6: browser half (lib/client.js) ===");
   ok("F6 locale dictionaries registered (en + zh)",
     dictionaries.length === 1 && !!dictionaries[0].dicts.en && !!dictionaries[0].dicts.zh,
     "ns=" + (dictionaries[0] && dictionaries[0].ns));
-  ok("F7 modern line: one card registered into plugins.row.config",
-    registered.length === 1 && registered[0].slotSpec.name === "plugins.row.config",
+  ok("F7 modern line: one card registered into plugins.bundle.config",
+    registered.length === 1 && registered[0].slotSpec.name === "plugins.bundle.config",
     "count=" + registered.length + " " + JSON.stringify(registered.map((r) => r.slotSpec.name)));
   ok("F7b registration is gated on whileServed(entry id)",
     Array.isArray(servedNamespaces) && servedNamespaces.length === 1 &&
     servedNamespaces[0] === "dsh-web-icon-indicator",
     JSON.stringify(servedNamespaces));
   const slotSpec = registered[0] && registered[0].slotSpec;
-  eq("F8 slot key is <package>#<row id>", slotSpec && slotSpec.key, "dsh-web-icon-indicator#dsh-web-icon-indicator");
+  eq("F8 bundle slot key is the bundle package name", slotSpec && slotSpec.key, "dsh-web-icon-indicator");
+  ok("F8b the row slot stays untouched where the bundle slot exists",
+    registered.every((r) => r.slotSpec.name !== "plugins.row.config"),
+    JSON.stringify(registered.map((r) => r.slotSpec.name)));
   eq("F9 slot locale namespace", slotSpec && slotSpec.locale, "dsh-web-icon-indicator");
   // The scope is resolved lazily inside the inject face (the two settings
   // providers are mutually exclusive), so evaluate it before asserting.
@@ -1661,6 +1675,99 @@ console.log("\n=== Part 6: browser half (lib/client.js) ===");
     // And the very same component renders against it.
     const legacyCard = legacyRegistered[0].component({ scope: scope, t: (k) => k });
     ok("F61f legacy component renders the card", !!legacyCard && legacyCard.type === "div");
+  }
+
+  // ---- the row-only Plugins page (DSH 0.1.6-alpha.2) ------------------------
+  // The bundle slot arrived with the 0.1.7 Plugins page. A host that declares
+  // only `plugins.row.config` keeps that older entry point — the configure
+  // control on the row the bundle declares — and must still get exactly one
+  // card, keyed by the row slot's `<package>#<row id>`.
+  {
+    const rowSink = [];
+    const rowCtx = makeClientCtx({
+      declared: ["plugins.row.config"],
+      sink: rowSink,
+      services: {
+        configForms: {
+          get: () => scope,
+          whileServed: (namespaces, register) => register(new Set(namespaces)),
+        },
+      },
+    });
+    client.apply(rowCtx);
+    eq("F66 row-only page: exactly one registration", rowSink.length, 1);
+    eq("F66b row-only page: registered into plugins.row.config",
+      rowSink[0] && rowSink[0].slotSpec.name, "plugins.row.config");
+    eq("F66c row-only page: key is <package>#<row id>",
+      rowSink[0] && rowSink[0].slotSpec.key, "dsh-web-icon-indicator#dsh-web-icon-indicator");
+  }
+
+  // ---- both modern slots, declared in either order --------------------------
+  // The real 0.1.7 host declares `plugins.bundle.config` and
+  // `plugins.row.config` from the Plugins page's own registration, so both
+  // waits this bundle installs resolve AFTER apply(). Whichever declaration
+  // lands first, exactly one entry must survive — and it must be the bundle
+  // one, or the settings would sit a level deeper than the official plugins'.
+  {
+    const makeLazyCtx = (sink) => {
+      const pending = new Map();
+      const ctx = {
+        get: (name) => (name === "configForms"
+          ? { get: () => scope, whileServed: (_ns, register) => register(new Set()) }
+          : undefined),
+        locale: { register: () => () => {}, bind: () => (k) => k },
+        slots: {
+          inject(name, cb) {
+            const controller = { cb, active: true, disposers: [] };
+            if (!pending.has(name)) pending.set(name, []);
+            pending.get(name).push(controller);
+            return () => {
+              if (!controller.active) return;
+              controller.active = false;
+              for (const dispose of controller.disposers.splice(0)) dispose();
+            };
+          },
+          register(slotSpec, component) {
+            const entry = { slotSpec, component, disposed: false };
+            sink.push(entry);
+            return () => { entry.disposed = true; };
+          },
+        },
+        effect: (fn) => fn(),
+      };
+      return {
+        ctx,
+        declare(name) {
+          for (const controller of pending.get(name) || []) {
+            if (!controller.active) continue;
+            const dispose = controller.cb();
+            if (typeof dispose === "function") controller.disposers.push(dispose);
+          }
+        },
+      };
+    };
+
+    const rowFirstSink = [];
+    const rowFirst = makeLazyCtx(rowFirstSink);
+    client.apply(rowFirst.ctx);
+    rowFirst.declare("plugins.row.config");
+    eq("F67 row declaration first: the row entry is registered", rowFirstSink.length, 1);
+    eq("F67b ... into plugins.row.config", rowFirstSink[0].slotSpec.name, "plugins.row.config");
+    rowFirst.declare("plugins.bundle.config");
+    const survivors = rowFirstSink.filter((entry) => !entry.disposed);
+    eq("F67c the bundle declaration takes the card over — one live entry", survivors.length, 1);
+    eq("F67d ... and it is the bundle entry",
+      survivors[0] && survivors[0].slotSpec.name, "plugins.bundle.config");
+    eq("F67e ... keyed by the bundle package name",
+      survivors[0] && survivors[0].slotSpec.key, "dsh-web-icon-indicator");
+
+    const bundleFirstSink = [];
+    const bundleFirst = makeLazyCtx(bundleFirstSink);
+    client.apply(bundleFirst.ctx);
+    bundleFirst.declare("plugins.bundle.config");
+    bundleFirst.declare("plugins.row.config");
+    eq("F68 bundle declaration first: exactly one entry", bundleFirstSink.length, 1);
+    eq("F68b ... the bundle one", bundleFirstSink[0].slotSpec.name, "plugins.bundle.config");
   }
 
   // ---- card render ---------------------------------------------------------
@@ -2391,6 +2498,7 @@ console.log("\n=== Part 6: browser half (lib/client.js) ===");
       CLIENT_SRC.indexOf("settingsScope") !== -1 &&
       CLIENT_SRC.indexOf("settings.plugin.item") !== -1 &&
       CLIENT_SRC.indexOf("configForms") !== -1 &&
+      CLIENT_SRC.indexOf("plugins.bundle.config") !== -1 &&
       CLIENT_SRC.indexOf("plugins.row.config") !== -1 &&
       CLIENT_SRC.indexOf("whileServed") !== -1);
 

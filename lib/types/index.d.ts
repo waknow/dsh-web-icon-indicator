@@ -21,7 +21,8 @@
 * The same surface is registered with the DSH settings service under the
 * `web-icon-indicator` namespace (schemastery schema in `lib/index.js`): it is
 * validated, persisted into the profile's `settings.yaml`, and editable from
-* 设置 → 插件 → 插件配置 through the browser half (`./client`). While no
+* the Plugins page (设置 → 插件) through the browser half (`./client`) — the
+* settings form is registered on the plugin's own page. While no
 * settings service is composed, the plugin reads the composition entry only.
 */
 

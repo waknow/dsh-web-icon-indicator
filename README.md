@@ -7,7 +7,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/dsh-web-icon-indicator)](https://www.npmjs.com/package/dsh-web-icon-indicator)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-> **⚠️ DSH version support** — requires **DSH ≥ 0.1.2-rc.1**. One bundle serves both settings generations: **modern** (≥ 0.1.7-alpha.1: exported `Config` schema + `configForms` + `plugins.row.config`) and **legacy** (≤ 0.1.6-alpha.1: `settings.installSection` + `settingsScope` + `settings.plugin.item`). Verified on **DSH 0.1.5-rc.3** and **DSH 0.1.7-alpha.1**; on any older host the favicon still works even if the settings page is not reachable.
+> **⚠️ DSH version support** — requires **DSH ≥ 0.1.2-rc.1**. One bundle serves both settings generations: **modern** (≥ 0.1.7-alpha.1: exported `Config` schema + `configForms` + `plugins.bundle.config`) and **legacy** (≤ 0.1.6-alpha.1: `settings.installSection` + `settingsScope` + `settings.plugin.item`). Verified on **DSH 0.1.5-rc.3** and **DSH 0.1.7-alpha.1**; on any older host the favicon still works even if the settings page is not reachable.
 
 Browser tab favicon reflects the current DSH session state — `idle` / `running` / `asking` / `done` — so you can see at a glance whether a session needs your attention, even when the tab is in the background.
 
@@ -227,9 +227,12 @@ patch declares); **≤ 0.1.6-alpha.1** uses the plugin-chosen
 `web-icon-indicator`, the same string 0.5.x used, so an existing section keeps
 resolving:
 
-- **Web GUI:** open **设置 → 插件**, expand the **dsh-web-icon-indicator**
-  bundle and configure its row. The *Favicon indicator* page edits the same
-  keys: asking/done hold, the **default icon color** (with a
+- **Web GUI:** open **设置 → 插件** and click the **dsh-web-icon-indicator**
+  card — the settings form opens directly on the plugin's page (the same place
+  the official plugins put theirs) — including on **0.1.6-alpha.2**, which still
+  binds through the legacy `settingsScope` but already renders the bundle slot.
+  The
+  *Favicon indicator* page edits the same keys: asking/done hold, the **default icon color** (with a
   live palette preview and the similarity warning), and the per-state effect /
   colors / cycle for `running` / `asking` / `done`. Each of those states is a
   collapsible row whose header shows one **color chip** per state — split in two
@@ -274,8 +277,10 @@ resolving:
   omitted from the resolved form until a user sets it.
 - The browser half is a hand-written `lib/client.js` (ModuleLoader factory
   format — no build step, no runtime deps beyond the shell's `react`). It
-  registers on both page slots (`plugins.row.config` — gated on the served
-  namespace — and the legacy `settings.plugin.item`) and resolves whichever
+  registers on the slot the running host declares — `plugins.bundle.config`
+  on ≥ 0.1.7 (so the Plugins list's card opens straight onto the form), else
+  `plugins.row.config`; both gated on the served namespace — plus the legacy
+  `settings.plugin.item` — and resolves whichever
   settings provider the host exposes (`configForms` or `settingsScope`) at
   render time, so neither is a hard dependency of the module. The DSH client
   scanner picks a new `dsh.client` declaration up on the next profile start.

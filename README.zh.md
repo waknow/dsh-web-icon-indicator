@@ -7,7 +7,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/dsh-web-icon-indicator)](https://www.npmjs.com/package/dsh-web-icon-indicator)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-> **⚠️ DSH 版本支持** —— 需要 **DSH ≥ 0.1.2-rc.1**。同一份插件同时兼容两代 settings 契约：**新一代**（≥ 0.1.7-alpha.1：导出 `Config` schema + `configForms` + `plugins.row.config`）与**旧一代**（≤ 0.1.6-alpha.1：`settings.installSection` + `settingsScope` + `settings.plugin.item`）。已在 **DSH 0.1.5-rc.3** 与 **DSH 0.1.7-alpha.1** 上验证；更早的宿主上 favicon 仍可用，只是配置页可能不可达。
+> **⚠️ DSH 版本支持** —— 需要 **DSH ≥ 0.1.2-rc.1**。同一份插件同时兼容两代 settings 契约：**新一代**（≥ 0.1.7-alpha.1：导出 `Config` schema + `configForms` + `plugins.bundle.config`）与**旧一代**（≤ 0.1.6-alpha.1：`settings.installSection` + `settingsScope` + `settings.plugin.item`）。已在 **DSH 0.1.5-rc.3** 与 **DSH 0.1.7-alpha.1** 上验证；更早的宿主上 favicon 仍可用，只是配置页可能不可达。
 
 浏览器标签页 favicon 实时反映 DSH 会话状态——`待机` / `运行中` / `提问` / `完成`——让你在标签页置于后台时也能一眼看出是否有会话需要处理。
 
@@ -205,8 +205,9 @@ schemastery schema），**并在宿主仍提供旧版服务时**用同一份 sch
 表单，即 `dsh-web-icon-indicator`（bundle patch 声明的行 id）；**≤ 0.1.6-alpha.1**
 使用插件自定的 `web-icon-indicator`，与 0.5.x 保持一致，老用户的 section 继续生效：
 
-- **Web GUI：** 打开 **设置 → 插件**，展开 **dsh-web-icon-indicator** bundle 并
-  配置它的行，即出现 *标签页图标指示器* 页面，可编辑：提问/完成驻留、
+- **Web GUI：** 打开 **设置 → 插件**，点开 **dsh-web-icon-indicator** 卡片，
+  设置表单就直接出现在插件页上（与官方插件的位置一致）；**0.1.6-alpha.2** 虽然还在用
+  旧的 `settingsScope`，但它同样渲染 bundle 插槽，因此表单位置一致。可编辑：提问/完成驻留、
   **默认图标颜色**（带配色一览与相似度告警），以及
   `running` / `asking` / `done` 三个状态各自的特效 / 颜色 / 周期。这三个状态
   各占一行可折叠条目，行首是一个**色块**——多色状态（asking）会左右分格同时显示
@@ -239,8 +240,9 @@ schemastery schema），**并在宿主仍提供旧版服务时**用同一份 sch
 - 因此实时设置面覆盖 `askingHoldMs`、`doneHoldMs`、`iconsDir`、`defaultColor`
   与 `states`。`iconsDir` 没有 schema 默认值，用户未设置时不会出现在解析后的表单中。
 - 浏览器半区是手写的 `lib/client.js`（ModuleLoader factory 格式——无构建步骤、
-  无额外运行期依赖，仅用 shell 自带的 `react`）。它同时往两代页面插槽注册
-  （`plugins.row.config`——按「Host 是否提供该命名空间」门控；以及旧的
+  无额外运行期依赖，仅用 shell 自带的 `react`）。它按宿主实际声明的插槽注册
+  （≥ 0.1.7 用 `plugins.bundle.config`，这样插件列表的卡片点开即见表单；否则退回
+  `plugins.row.config`——两者都按「Host 是否提供该命名空间」门控；另有旧的
   `settings.plugin.item`），并在渲染时按宿主实际提供的服务解析表单
   （`configForms` 或 `settingsScope`），因此两者都不是模块的硬依赖。DSH 客户端
   扫描器会在下次启动 profile 时识别新的 `dsh.client` 声明。
