@@ -34,6 +34,8 @@
 
 改动会通过 settings 传输层持久化到 profile patch，约 1 秒内应用到已打开的标签页——无需刷新、无需重启。完整键说明见 [配置](#配置)。
 
+> 🐳 **插件页会显示本插件自己的图标** —— DSH ≥ 0.1.7 的 **设置 → 插件** 页面会为每个 bundle 卡片画一个 48px 图标（每一行 40px），来源是 `package.json` → `icon`。本仓库声明了 `"icon": "icons/plugin.svg"`，所以卡片显示的是鲸鱼而不是通用占位图。图标由宿主读取（`readPluginMeta` → `iconOf`），并以 base64 `data:` URL 传给浏览器；**图标缺失或不合规不会把卡片变空——而是点亮该插件的 `meta.error`，卡片上出现「问题」标签**，所以路径必须相对、必须在包内、且 ≤ 256 KiB。加这个字段不需要任何配置、代码或宿主重启，只需重新安装或发一个新版本；详见[插件页图标](#插件页图标)。
+
 ## 🎬 默认配置，可视化
 
 四个默认状态在浏览器标签页中的实际效果（`asking` 那条鲸鱼真的在闪烁）：
@@ -110,6 +112,10 @@ dsh plugin --profile web add <路径或tarball>
 
 或将目录放进 `~/.dsh/profiles/web/node_modules/<name>/`，并附带与包内一致的 `cordis.patch.yml`。
 
+> ℹ️ 官方**插件页**的图标读取的是**已安装包的 `package.json.icon`**，因此只有在安装
+> （或发布新版本）之后才会出现——已经打开的插件页会一直显示上一次的快照，直到你刷新。
+> 详见[插件页图标](#插件页图标)。
+
 ## 配置
 
 所有键均可选，默认值如下。`statusPath` 与 `iconPathPrefix` 是**注册期**键：
@@ -125,6 +131,10 @@ dsh plugin --profile web add <路径或tarball>
 | `doneHoldMs` | `5000` | 完成状态保持时长，随后回到 idle |
 | `defaultColor` | *（未设置）* | 默认图标颜色（待机鲸鱼的主色）—— 用于区分多个 DSH 实例；与其它状态颜色过于接近时会告警 |
 | `states` | 见下 | 每个状态的视觉配置 |
+
+> 插件页的图标**不是**配置键——它来自 `package.json.icon`
+> （见[插件页图标](#插件页图标)）。`iconsDir` 只告诉 *favicon* 路由去哪里取
+> `base.svg`。
 
 `states` 中每个状态是一个对象：`{ effect, colors[], speed? }`：
 
@@ -235,6 +245,44 @@ schemastery schema），**并在宿主仍提供旧版服务时**用同一份 sch
   （`configForms` 或 `settingsScope`），因此两者都不是模块的硬依赖。DSH 客户端
   扫描器会在下次启动 profile 时识别新的 `dsh.client` 声明。
 - 未组合 settings 服务的部署不受影响：插件继续使用挂载时的合成条目 + schema 默认值。
+
+## 插件页图标
+
+DSH ≥ 0.1.7 会在官方**插件页**为每个插件渲染图标：bundle 卡片 48px、每一行
+40px（`@deepseek-ai/dsh-client-ui-plugin-manager` 的 `PackageArtwork`，未声明时
+回退到通用占位图）。图标直接来自包清单，所以给出它纯粹是元数据——**不需要改代码、
+不需要配置、不需要重启宿主**：
+
+```jsonc
+// package.json
+{
+  "name": "dsh-web-icon-indicator",
+  "icon": "icons/plugin.svg"   // 相对 package.json，且必须留在包内
+}
+```
+
+宿主在**不执行任何插件代码**的前提下读取它（`@deepseek-ai/dsh-app-boot` 的
+`readPluginMeta` → `iconOf`）：
+
+| 规则 | 取值 |
+| --- | --- |
+| 字段 | 顶层 `package.json.icon`（与 `name`/`version` 同级，**不是**放在 `dsh` 下） |
+| 路径形式 | 相对清单所在目录；绝对路径、Windows 盘符（`C:\…`）与 URL 都会被拒绝 |
+| 包含关系 | 经 `realpath` 解析后必须仍在清单目录内（`..` 越界会被拒绝） |
+| 格式 | `.svg` → `image/svg+xml`，`.png` → `image/png`，`.jpg` / `.jpeg` → `image/jpeg`，`.webp` → `image/webp` |
+| 大小 | ≤ 256 KiB（`stat` 与实际读到的字节数各校验一次） |
+| 传输 | 读成字节后以 base64 `data:` URL 随元数据下发（`PluginLocalizedMeta.icon`） |
+
+> ⚠️ **坏的图标比没有图标更糟。** 任何不合规都不是静默回退，而是**元数据错误**：
+> 读取器返回 `meta.error`，宿主把它暴露出来，卡片上会给这个插件打上**问题标签**。
+> 所以文件要留在包内（`files` 里已包含 `icons/`），并且必须是独立可用的 SVG——
+> 直接用 `icons/base.svg` 是**无效**的，因为它里面的 `#p { fill: __COLOR__ }`
+> 占位符并不是颜色。本仓库因此提供预填好的
+> [`icons/plugin.svg`](./icons/plugin.svg)（即 `base.svg` 把 `__COLOR__` 换成
+> `#1a1a1a`），并在 `test/verify.js` 里把整套约束都断言下来（F62–F65）。
+
+由于图标是从**已安装**的包读取的，本地改动只有在重新安装插件
+（`dsh plugin --profile web add <path>`）或发布新版本之后才会生效。
 
 ## 实现原理
 

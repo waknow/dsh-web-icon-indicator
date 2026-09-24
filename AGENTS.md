@@ -25,6 +25,7 @@ The DSH platform this plugin runs on lives at **https://github.com/deepseek-ai/d
 | `lib/types/index.d.ts` | Public config & aggregate types | Keep in sync with the config surface + `CONFIG_SCHEMA` in `lib/index.js` |
 | `lib/types/client/index.d.ts` | Browser-half types (`inject` / `apply`) | Keep in sync with `lib/client.js` |
 | `icons/base.svg` | The single whale template with a `__COLOR__` placeholder; recolored/animated in the browser | The filename is locked by a route regex — treat as immutable |
+| `icons/plugin.svg` | The **static** whale declared as `package.json` → `icon`: the official Plugins page's card/row artwork (DSH ≥ 0.1.7) | Byte-identical to `docs/assets/favicon.svg`; both are `base.svg` with `__COLOR__` → `#1a1a1a`. Never point `icon` at `base.svg` (its placeholder is not a colour) — see *Declare the Plugins-page artwork* |
 | `cordis.patch.yml` | Install patch that inserts the plugin row into the profile composition | Referenced by `package.json` → `dsh.bundle.patch` |
 | `README.md` / `README.zh.md` | User docs (EN / zh) | Update both on any behavior/config/icon change |
 | `screenshots.json` | Marketplace storefront screenshots (1–8 image paths, relative to the file, in-repo only) | Read by the awesome-dsh-plugin nightly build & dsh-market detail view; see *Declare or change marketplace screenshots* |
@@ -208,6 +209,43 @@ the dsh-market detail view and the awesome-dsh-plugin storefront build.
   ships in the tarball too. Keep the referenced images under an allowlisted
   directory (`assets/`), or add the path to `files`.
 
+### Declare the Plugins-page artwork (`package.json` → `icon`)
+
+DSH ≥ 0.1.7's official **Plugins page** draws a per-package icon — 48 px on a
+bundle card, 40 px on a row — from the package manifest. This is the *only*
+supported way to give the plugin artwork there; the page's slots
+(`plugins.item` / `plugins.bundle.config` / `plugins.row.config` /
+`plugins.detail.{actions,badge,section}`) carry configuration and copy, not
+artwork, so **do not** try to inject an icon through the browser half.
+
+- **The field is top-level `package.json.icon`** — a sibling of
+  `name`/`version`, *not* under `dsh`. Declared here as `icons/plugin.svg`.
+- **Read by the host, never by the plugin**: `readPluginMeta` → `iconOf` in
+  `@deepseek-ai/dsh-app-boot` resolves `<specifier>/package.json` (so the
+  `exports` map must keep `"./package.json": "./package.json"`), reads the icon
+  file itself, and ships it to the browser as a base64 `data:` URL on
+  `PluginLocalizedMeta.icon`. Nothing in `lib/` participates.
+- **Contract**: relative path, contained in the manifest directory after
+  `realpath` (no `..`), SVG / PNG / JPEG / WebP only, ≤ 256 KiB. Absolute
+  paths, Windows drive letters and URLs are rejected.
+- **A violation is a *problem tag*, not a fallback.** `iconOf` throwing makes
+  `readPluginMeta` return `{ ...text, error }` without an icon, which the card
+  renders as a metadata error on the plugin. So a broken icon is strictly worse
+  than no icon — hence the assertions below.
+- **Never point `icon` at `icons/base.svg`**: its `#p { fill: __COLOR__ }`
+  placeholder is not a colour, so the file is not a valid standalone image.
+  `icons/plugin.svg` is the pre-filled twin (`base.svg` with `__COLOR__` →
+  `#1a1a1a`), byte-identical to `docs/assets/favicon.svg`; regenerate both the
+  same way when the whale path changes (F65 pins the pair).
+- **The package must ship it**: it lives under `icons/`, already in `files`.
+- **Effective only on install**: the icon is read from the *installed* package,
+  so a local edit shows up after `dsh plugin --profile web add <path>` (or a
+  publish) — not from editing this repo alone.
+- **Covered by F62–F65** in Part 6 of `test/verify.js`: the manifest path shape,
+  the file's size, its standalone-SVG shape (no placeholder), and the
+  `icons/plugin.svg` ↔ `docs/assets/favicon.svg` identity (the last one skips
+  from a published tarball, where `docs/` is absent).
+
 ### Publish the GitHub Pages site (`docs/`)
 The showcase site lives in `docs/` and is plain static HTML/CSS/JS — **no build
 step**. `.github/workflows/pages.yml` uploads `docs/` via
@@ -291,6 +329,10 @@ plain-Node script (`npm test` or `node test/verify.js`). It runs the REAL code:
   starting hue, reset semantics, a PARTIAL `states` dict, the cycle field). Two
   assertions pin the deliberate duplication: F41 (`DEFAULT_STATES` ===
   `DEFAULTS.states`) and F42 (ΔE thresholds + hex regex in both halves).
+- **Plugins-page artwork** — F62–F65 pin `package.json` → `icon` (a relative,
+  in-package SVG/PNG/JPEG/WebP ≤ 256 KiB), the shipped file's standalone-SVG
+  shape (no leftover `__COLOR__` placeholder), and its identity with
+  `docs/assets/favicon.svg`; see *Declare the Plugins-page artwork*.
 
 Keep it passing when touching `lib/index.js` or `lib/client.js` — it extracts the
 source, so it tests exactly what ships. `demo/badge.html` is repo-only, so its

@@ -34,6 +34,8 @@ Browser tab favicon reflects the current DSH session state — `idle` / `running
 
 Changes are saved through the settings transport into the profile patch and applied to the running tab within ~1 s — no reload, no restart. See [Configure](#configure) for the full key reference.
 
+> 🐳 **The Plugins page shows this plugin's own artwork** — on DSH ≥ 0.1.7 the **Plugins / 插件** page draws a 48 px icon on every bundle card (a 40 px one on every row) from `package.json` → `icon`. This repo declares `"icon": "icons/plugin.svg"`, so the card shows the whale instead of the generic placeholder. The icon is read by the host (`readPluginMeta` → `iconOf`) and shipped to the browser as a base64 `data:` URL; **a missing or malformed icon never blanks the card — it turns the plugin's `meta.error` on and the card shows a problem tag**, so keep the path relative, inside the package, and ≤ 256 KiB. Adding `icon` needs no settings, no code, and no host restart — only a new install or publish; see [Plugin artwork on the Plugins page](#plugin-artwork-on-the-plugins-page).
+
 ## 🎬 Default configuration, visualized
 
 The four default states, exactly as they appear in the browser tab (the `asking` whale really blinks):
@@ -115,6 +117,11 @@ dsh plugin --profile web add <path-or-tarball>
 
 Or drop the directory into `~/.dsh/profiles/web/node_modules/<name>/` and ship a `cordis.patch.yml` that matches the one shipped here.
 
+> ℹ️ The official **Plugins** page reads the artwork from **`package.json.icon` of the
+> installed package**, so it appears only after an install (or a publish) — a page
+> that was already open keeps its last snapshot until you reload it. See
+> [Plugin artwork on the Plugins page](#plugin-artwork-on-the-plugins-page).
+
 ## Configure
 
 All keys are optional; defaults shown. `statusPath` and `iconPathPrefix` are
@@ -132,6 +139,10 @@ they are intentionally **not** part of the settings page's live form (they are
 | `doneHoldMs` | `5000` | Time the done state stays before falling back to idle |
 | `defaultColor` | *(unset)* | Default icon color (the idle whale's primary) — tell multiple DSH instances apart. Warns when it is too close to another state's color |
 | `states` | see below | Per-state visual config |
+
+> The Plugins-page artwork is **not** a config key — it comes from
+> `package.json.icon` (see [Plugin artwork on the Plugins page](#plugin-artwork-on-the-plugins-page)).
+> `iconsDir` only tells the *favicon* routes where `base.svg` lives.
 
 Each entry in `states` is one object per state: `{ effect, colors[], speed? }`:
 
@@ -270,6 +281,48 @@ resolving:
   scanner picks a new `dsh.client` declaration up on the next profile start.
 - Deployments without a settings service are unaffected: the plugin keeps
   running on the composition entry + schema defaults it was mounted with.
+
+## Plugin artwork on the Plugins page
+
+DSH ≥ 0.1.7 renders a **per-plugin icon on the official Plugins page**: 48 px on
+each bundle card, 40 px on each row (`PackageArtwork` in
+`@deepseek-ai/dsh-client-ui-plugin-manager`, which falls back to a generic
+placeholder when a package declares none). The artwork comes straight from the
+package manifest, so shipping one is pure metadata — **no code, no settings, no
+host restart**:
+
+```jsonc
+// package.json
+{
+  "name": "dsh-web-icon-indicator",
+  "icon": "icons/plugin.svg"   // relative to package.json, and inside the package
+}
+```
+
+The host reads it before evaluating any plugin code
+(`readPluginMeta` → `iconOf` in `@deepseek-ai/dsh-app-boot`):
+
+| Rule | Value |
+| --- | --- |
+| Field | top-level `package.json.icon` (a sibling of `name`/`version` — **not** under `dsh`) |
+| Path form | relative to the manifest's directory; absolute paths, Windows drive letters (`C:\…`) and URLs are rejected |
+| Containment | must stay inside the manifest directory after `realpath` resolution (`..` escapes are rejected) |
+| Formats | `.svg` → `image/svg+xml`, `.png` → `image/png`, `.jpg` / `.jpeg` → `image/jpeg`, `.webp` → `image/webp` |
+| Size | ≤ 256 KiB (checked both on `stat` and on the bytes actually read) |
+| Delivery | read as bytes and shipped to the browser as a base64 `data:` URL on the wire (`PluginLocalizedMeta.icon`) |
+
+> ⚠️ **A bad icon is worse than no icon.** Any violation is a *metadata error*,
+> not a silent fallback: the reader returns `meta.error`, the host surfaces it,
+> and the card shows a **problem tag** for the plugin. Keep the file in the
+> package (`files` ships `icons/`) and make sure it is standalone — a raw
+> `icons/base.svg` would be **invalid**, because its `#p { fill: __COLOR__ }`
+> placeholder is not a colour. This repo therefore ships the pre-filled
+> [`icons/plugin.svg`](./icons/plugin.svg) (`base.svg` with `__COLOR__` →
+> `#1a1a1a`) and asserts the whole contract in `test/verify.js` (F62–F65).
+
+Because the icon is read from the **installed** package, a local edit takes
+effect only after reinstalling the plugin (`dsh plugin --profile web add
+<path>`) or publishing a new version.
 
 ## How it works
 

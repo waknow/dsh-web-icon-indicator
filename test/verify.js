@@ -21,7 +21,7 @@
  */
 import { register } from "node:module";
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { readFileSync, statSync, writeFileSync, unlinkSync } from "node:fs";
 import vm from "node:vm";
 import os from "node:os";
 import path from "node:path";
@@ -2260,6 +2260,59 @@ console.log("\n=== Part 6: browser half (lib/client.js) ===");
       CLIENT_SRC.indexOf("configForms") !== -1 &&
       CLIENT_SRC.indexOf("plugins.row.config") !== -1 &&
       CLIENT_SRC.indexOf("whileServed") !== -1);
+
+    // ---- official Plugins page icon (host manifest contract) ---------------
+    // The 0.1.7 page reads `package.json.icon` through <pkg>/package.json and
+    // base64s the file (readPluginMeta -> iconOf in @deepseek-ai/dsh-app-boot):
+    // a manifest-relative SVG/PNG/JPEG/WebP at most 256 KiB, contained in the
+    // manifest directory after realpath. Any violation does not blank the card
+    // — it turns the plugin's `meta.error` on and the card shows a problem tag,
+    // so every rule below is load-bearing.
+    const MANIFEST = JSON.parse(readFileSync(new URL("package.json", REPO), "utf8"));
+    const ICON_REL = MANIFEST.icon;
+    const ICON_EXT = typeof ICON_REL === "string" ? ICON_REL.slice(ICON_REL.lastIndexOf(".")).toLowerCase() : "";
+    ok("F62 the manifest declares a relative image icon",
+      typeof ICON_REL === "string" && ICON_REL.trim() !== "" &&
+      !/^[A-Za-z][A-Za-z\d+.-]*:/u.test(ICON_REL) &&           // rejects URLs (and Windows drive letters)
+      !ICON_REL.startsWith("/") && !ICON_REL.startsWith("\\") &&
+      !/^[A-Za-z]:/u.test(ICON_REL) &&                        // rejects C:\... absolute paths
+      !ICON_REL.split(/[\\/]/u).includes("..") &&             // must stay inside the manifest directory
+      [".svg", ".png", ".jpg", ".jpeg", ".webp"].includes(ICON_EXT),
+      JSON.stringify(ICON_REL));
+
+    let ICON_SVG = "";
+    let ICON_BYTES = 0;
+    try {
+      ICON_SVG = readFileSync(new URL(ICON_REL, REPO), "utf8");
+      ICON_BYTES = statSync(new URL(ICON_REL, REPO)).size;
+    } catch {
+      /* the F63 check below reports the missing file */
+    }
+    ok("F63 the declared icon ships and stays under the 256 KiB manifest bound",
+      ICON_BYTES > 0 && ICON_BYTES <= 256 * 1024,
+      ICON_BYTES + " bytes");
+
+    // A leftover __COLOR__ placeholder is not valid SVG: the page would render
+    // an unpainted whale (or nothing) where the artwork goes.
+    ok("F64 the icon is standalone SVG with no placeholder left in it",
+      ICON_SVG !== "" &&
+      ICON_SVG.startsWith("<svg ") && ICON_SVG.trimEnd().endsWith("</svg>") &&
+      !ICON_SVG.includes("__COLOR__"),
+      ICON_SVG.slice(0, 40));
+
+    // icons/plugin.svg and docs/assets/favicon.svg are the same static whale;
+    // keep them byte-identical so regenerating one from icons/base.svg cannot
+    // silently leave the other stale. Repo-only (absent from the npm tarball).
+    let DOCS_FAVICON = null;
+    try {
+      DOCS_FAVICON = readFileSync(new URL("docs/assets/favicon.svg", REPO), "utf8");
+    } catch {
+      /* published tarball: docs/ is repo-only */
+    }
+    if (DOCS_FAVICON !== null) {
+      ok("F65 icons/plugin.svg stays identical to docs/assets/favicon.svg",
+        DOCS_FAVICON === ICON_SVG);
+    }
   }
 }
 
